@@ -45,8 +45,9 @@ Use Gear integration with tight tolerances for stable convergence in closed loop
 ```
 apm1-lib/
 ├─ apm1_lib.txt          # Library of APM-1 subcircuits
-├─ examples/
-│  └─ dzielnik.cir       # Divider example (C = A/B via feedback)
+├─ apm1_lib_rag_v12_pl.md # RULES & GUIDELINES
+├─ examples/ 
+│  └─ division.cir       # Divider example (C = A/B via feedback)
 ├─ README.md
 └─ LICENSE
 ```
