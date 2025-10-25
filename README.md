@@ -53,7 +53,7 @@ apm1-lib/
 ```
 
 ---
-
+```spice
 ## Engineering conventions
 
 - **Scaling:** Keep physical variables within ±VL to avoid limiter action unless intended.
