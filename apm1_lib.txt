@@ -1,0 +1,372 @@
+* =====================================================================
+* APM-1 Analog Programmed Machine
+* All subckts use explicit ground pin "GDN" (connect to node 0)
+* Voltage scale default: VL=10
+* =====================================================================
+
+.func sgn1(x) = if(x>0, 1, if(x<0, -1, 0))
+
+* ---------------- ANALOG CORE ----------------
+
+.subckt INV out u GDN PARAMS: K=1
+* LLM_DESC_START
+* Function: Inverting amplifier. Equation: out = -K * u
+* Pins: out, u, GDN
+* Params: K
+* LLM_DESC_END
+B1 out GDN V = {-{K}*V(u,GDN)}
+Rle out GDN 1G
+.ends INV
+
+.subckt ADD2 out a b GDN PARAMS: wa=1 wb=1
+* LLM_DESC_START
+* Function: Weighted summer. Equation: out = wa*a + wb*b
+* Pins: out, a, b, GDN
+* Params: wa, wb
+* LLM_DESC_END
+B1 out GDN V = {{wa}*V(a,GDN)+{wb}*V(b,GDN)}
+Rle out GDN 1G
+.ends ADD2
+
+.subckt ADD2W out a b GDN PARAMS: wa=1 wb=1 scale=1
+* LLM_DESC_START
+* Function: Weighted summer with scale. out = ((wa*a)+(wb*b))*scale
+* Pins: out, a, b, GDN
+* Params: wa, wb, scale
+* LLM_DESC_END
+B1 out GDN V = {( {wa}*V(a,GDN) + {wb}*V(b,GDN) )*{scale}}
+Rle out GDN 1G
+.ends ADD2W
+
+.subckt SUM out u d GDN PARAMS: Ku=1 Kd=1
+* LLM_DESC_START
+* Function: Two-input summer. out = Ku*u + Kd*d
+* Pins: out, u, d, GDN
+* Params: Ku, Kd
+* LLM_DESC_END
+B1 out GDN V = {{Ku}*V(u,GDN)+{Kd}*V(d,GDN)}
+Rle out GDN 1G
+.ends SUM
+
+.subckt SUMpinv out a b GDN PARAMS: Ka=1 Kb=1 inva=0 invb=0
+* LLM_DESC_START
+* Function: Summer with per-input inversion.
+* Equation: out = Ka*sa*a + Kb*sb*b, sa=-1 if inva=1 else 1; sb analogous
+* Pins: out, a, b, GDN
+* Params: Ka, Kb, inva, invb
+* LLM_DESC_END
+B1 out GDN V = {{Ka}*(if({inva},-1,1))*V(a,GDN)+{Kb}*(if({invb},-1,1))*V(b,GDN)}
+Rle out GDN 1G
+.ends SUMpinv
+
+.subckt SUMp out a b p GDN PARAMS: VL=10
+* LLM_DESC_START
+* Function: Parametric summer. out = a + (p/VL)*b
+* Pins: out, a, b, p, GDN
+* Params: VL
+* LLM_DESC_END
+B1 out GDN V = { V(a,GDN) + V(p,GDN)/{VL}*V(b,GDN) }
+Rle out GDN 1G
+.ends SUMp
+
+.subckt MUL out a b GDN PARAMS: VL=10
+* LLM_DESC_START
+* Function: Multiplier. out = a*b/VL
+* Pins: out, a, b, GDN
+* Params: VL
+* LLM_DESC_END
+B1 out GDN V = { V(a,GDN)*V(b,GDN)/{VL} }
+Rle out GDN 1G
+.ends MUL
+
+.subckt MULpinv out a b GDN PARAMS: VL=10 inva=0 invb=0
+* LLM_DESC_START
+* Function: Multiplier with selectable inversions.
+* Equation: out = (sa*a*sb*b)/VL
+* Pins: out, a, b, GDN
+* Params: VL, inva, invb
+* LLM_DESC_END
+B1 out GDN V = { ((if({inva},-1,1))*V(a,GDN))*((if({invb},-1,1))*V(b,GDN))/{VL} }
+Rle out GDN 1G
+.ends MULpinv
+
+.subckt INT out u GDN PARAMS: IC=0 SIGN=-1 leak=0
+* LLM_DESC_START
+* Function: Integrator. out = IC + ∫ SIGN*u dt
+* Pins: out, u, GDN
+* Params: IC, SIGN, leak
+* LLM_DESC_END
+Bint out GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
+Gle  out GDN value = {{leak}*V(out,GDN)}
+Rle  out GDN 1G
+.ends INT
+
+.subckt INTp out u GDN PARAMS: IC=0 SIGN=-1 K=1 leak=0
+* LLM_DESC_START
+* Function: Integrator with gain. out = IC + ∫ SIGN*K*u dt
+* Pins: out, u, GDN
+* Params: IC, SIGN, K, leak
+* LLM_DESC_END
+Bint out GDN V = sdt( {SIGN}*{K}*V(u,GDN), {IC} )
+Gle  out GDN value = {{leak}*V(out,GDN)}
+Rle  out GDN 1G
+.ends INTp
+
+.subckt INTpinv out u GDN PARAMS: IC=0 K=1 leak=0
+* LLM_DESC_START
+* Function: Non-inverting integrator. out = IC + ∫ K*u dt
+* Pins: out, u, GDN
+* Params: IC, K, leak
+* LLM_DESC_END
+Bint out GDN V = sdt( {K}*V(u,GDN), {IC} )
+Gle  out GDN value = {{leak}*V(out,GDN)}
+Rle  out GDN 1G
+.ends INTpinv
+
+.subckt INTV out u GDN PARAMS: IC=0 SIGN=-1 L=-10 H=10 leak=0
+* LLM_DESC_START
+* Function: Integrator with clamp. out = limit(IC+∫ SIGN*u dt, L, H)
+* Pins: out, u, GDN
+* Params: IC, SIGN, L, H, leak
+* LLM_DESC_END
+Braw x GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
+Bcl  out GDN V = limit( V(x,GDN), {L}, {H} )
+Gle  out GDN value = {{leak}*V(out,GDN)}
+Rle  out GDN 1G
+.ends INTV
+
+.subckt CMPad out a d GDN PARAMS: th=0
+* LLM_DESC_START
+* Function: Comparator. out=1 if a+d>th else 0
+* Pins: out, a, d, GDN
+* Params: th
+* LLM_DESC_END
+B1 out GDN V = if( V(a,GDN)+V(d,GDN)>{th}, 1, 0 )
+Rle out GDN 1G
+.ends CMPad
+
+.subckt CMPda out a b d GDN
+* LLM_DESC_START
+* Function: 2-to-1 mux. out=a if d>0.5 else b
+* Pins: out, a, b, d, GDN
+* Params: —
+* LLM_DESC_END
+B1 out GDN V = if( V(d,GDN)>0.5, V(a,GDN), V(b,GDN) )
+Rle out GDN 1G
+.ends CMPda
+
+.subckt DPT out u w GDN PARAMS: VL=10
+* LLM_DESC_START
+* Function: V-controlled potentiometer. out=(w/VL)*u
+* Pins: out, u, w, GDN
+* Params: VL
+* LLM_DESC_END
+B1 out GDN V = { V(w,GDN)/{VL} * V(u,GDN) }
+Rin1 u   GDN 10Meg
+Rin2 w   GDN 10Meg
+Rout out GDN 1Meg
+.ends DPT
+
+.subckt GAIN out u GDN PARAMS: K=1
+* LLM_DESC_START
+* Function: Non-inverting gain. out=K*u
+* Pins: out, u, GDN
+* Params: K
+* LLM_DESC_END
+B1 out GDN V = {{K}*V(u,GDN)}
+Rle out GDN 1G
+.ends GAIN
+
+.subckt DIF out u GDN PARAMS: K=1 leak=0
+* LLM_DESC_START
+* Function: Differentiator. out=K*du/dt
+* Pins: out, u, GDN
+* Params: K, leak
+* LLM_DESC_END
+B1  out GDN V = {{K}*ddt(V(u,GDN))}
+Gle out GDN value = {{leak}*V(out,GDN)}
+Rle out GDN 1G
+.ends DIF
+
+.subckt LIM out u GDN PARAMS: L=0 H=1
+* LLM_DESC_START
+* Function: Limiter. out=limit(u,L,H)
+* Pins: out, u, GDN
+* Params: L, H
+* LLM_DESC_END
+B1 out GDN V = limit( V(u,GDN), {L}, {H} )
+Rle out GDN 1G
+.ends LIM
+
+.subckt DEADZ out u GDN PARAMS: DZ=0.05
+* LLM_DESC_START
+* Function: Dead-zone. out=0 for |u|<DZ else u-DZ*sgn(u)
+* Pins: out, u, GDN
+* Params: DZ
+* LLM_DESC_END
+B1 out GDN V = if( abs(V(u,GDN))<{DZ}, 0, V(u,GDN) - sgn1(V(u,GDN))*{DZ} )
+Rle out GDN 1G
+.ends DEADZ
+
+.subckt ABS out u GDN
+* LLM_DESC_START
+* Function: Absolute value. out=|u|
+* Pins: out, u, GDN
+* Params: —
+* LLM_DESC_END
+B1 out GDN V = abs(V(u,GDN))
+Rle out GDN 1G
+.ends ABS
+
+.subckt SGN out u GDN
+* LLM_DESC_START
+* Function: Signum. out in {-1,0,1}
+* Pins: out, u, GDN
+* Params: —
+* LLM_DESC_END
+B1 out GDN V = sgn1(V(u,GDN))
+Rle out GDN 1G
+.ends SGN
+
+.subckt SCHMITT y u GDN PARAMS: CEN=0 HYS=0.2
+* LLM_DESC_START
+* Function: Schmitt trigger with hysteresis.
+* Pins: y, u, GDN
+* Params: CEN, HYS
+* LLM_DESC_END
+B1 y GDN V = if( V(u,GDN)>{CEN+HYS/2}, 1, if( V(u,GDN)<{CEN-HYS/2}, 0, V(y,GDN) ) )
+Rle y GDN 1G
+.ends SCHMITT
+
+.subckt DELAY out u GDN PARAMS: T=1m
+* LLM_DESC_START
+* Function: Transport delay. out(t)=u(t-T)
+* Pins: out, u, GDN
+* Params: T
+* LLM_DESC_END
+B1 out GDN V = delay( V(u,GDN), {T} )
+Rle out GDN 1G
+.ends DELAY
+
+.subckt LP1 out u GDN PARAMS: tau=1m K=1
+* LLM_DESC_START
+* Function: 1st order low-pass. out/u = K/(tau*s+1)
+* Pins: out, u, GDN
+* Params: tau, K
+* LLM_DESC_END
+B1 out GDN V = sdt( ( {K}*V(u,GDN) - V(out,GDN) )/{tau}, 0 )
+Rle out GDN 1G
+.ends LP1
+
+.subckt HP1 out u GDN PARAMS: tau=1m K=1
+* LLM_DESC_START
+* Function: 1st order high-pass. out/u = (K*tau*s)/(tau*s+1)
+* Pins: out, u, GDN
+* Params: tau, K
+* LLM_DESC_END
+B1 x   GDN V = sdt( ( {K}*V(u,GDN) - V(x,GDN) )/{tau}, 0 )
+B2 out GDN V = {K}*V(u,GDN) - V(x,GDN)
+Rle out GDN 1G
+.ends HP1
+
+.subckt S_H out u i GDN PARAMS: Ron=1 Roff=1G Ch=100n
+* LLM_DESC_START
+* Function: Sample&Hold. out=u when i>0.5, else hold
+* Pins: out, u, i, GDN
+* Params: Ron, Roff, Ch
+* LLM_DESC_END
+S1 u n i GDN SW
+.model SW SW(Ron={Ron} Roff={Roff} Vt=0.5 Vh=0)
+Ch n GDN {Ch}
+Ebuf out GDN value = { V(n,GDN) }
+Rle out GDN 1G
+.ends S_H
+
+* ---------------- HYBRID / DIGITAL-STYLE CORE ----------------
+
+.subckt CLK out GDN PARAMS: f=1k duty=0.5 vhi=1 vlo=0 tr=1u tf=1u
+* LLM_DESC_START
+* Function: Clock generator (PULSE). period=1/f, Ton=duty/f
+* Pins: out, GDN
+* Params: f, duty, vhi, vlo, tr, tf
+* LLM_DESC_END
+Vclk out GDN PULSE({vlo} {vhi} 0 {tr} {tf} {duty/f} {1/f})
+.ends CLK
+
+.subckt DAC8 y b7 b6 b5 b4 b3 b2 b1 b0 GDN PARAMS: VL=10
+* LLM_DESC_START
+* Function: 8-bit DAC. y = VL*(128*b7+...+b0)/255
+* Pins: y, b7..b0, GDN
+* Params: VL
+* LLM_DESC_END
+B1 y GDN V = { {VL} * ( (128*V(b7,GDN)+64*V(b6,GDN)+32*V(b5,GDN)+16*V(b4,GDN)+8*V(b3,GDN)+4*V(b2,GDN)+2*V(b1,GDN)+V(b0,GDN)) / 255 ) }
+Rle y GDN 1G
+.ends DAC8
+
+.subckt MUX4 y a b c d s1 s0 GDN
+* LLM_DESC_START
+* Function: 4:1 mux
+* Pins: y, a, b, c, d, s1, s0, GDN
+* Params: —
+* LLM_DESC_END
+B1 y GDN V = if( V(s1,GDN)>0.5, if(V(s0,GDN)>0.5, V(d,GDN), V(c,GDN)), if(V(s0,GDN)>0.5, V(b,GDN), V(a,GDN)) )
+Rle y GDN 1G
+.ends MUX4
+
+.subckt EDGE_R y u GDN PARAMS: Td=1u
+* LLM_DESC_START
+* Function: Rising-edge detector. pulse width≈Td
+* Pins: y, u, GDN
+* Params: Td
+* LLM_DESC_END
+B1 y GDN V = if( V(u,GDN) > delay(V(u,GDN),{Td}), 1, 0 )
+Rle y GDN 1G
+.ends EDGE_R
+
+.subckt EDGE_F y u GDN PARAMS: Td=1u
+* LLM_DESC_START
+* Function: Falling-edge detector. pulse width≈Td
+* Pins: y, u, GDN
+* Params: Td
+* LLM_DESC_END
+B1 y GDN V = if( V(u,GDN) < delay(V(u,GDN),{Td}), 1, 0 )
+Rle y GDN 1G
+.ends EDGE_F
+
+.subckt PWM y u GDN PARAMS: f=1k VL=10
+* LLM_DESC_START
+* Function: PWM vs triangle carrier
+* Pins: y, u, GDN
+* Params: f, VL
+* LLM_DESC_END
+Btri t GDN V = (2/PI)*asin(sin(2*PI*{f}*time))
+B1   y GDN V = if( V(u,GDN)/{VL} > (V(t,GDN)+1)/2, 1, 0 )
+Rle  y GDN 1G
+.ends PWM
+
+.subckt MONO y trig GDN PARAMS: Td=1u Tw=1m
+* LLM_DESC_START
+* Function: One-shot. Rising edge on trig → pulse Tw
+* Pins: y, trig, GDN
+* Params: Td, Tw
+* LLM_DESC_END
+B_set s GDN V = if( V(trig,GDN) > delay(V(trig,GDN),{Td}), 1, 0 )
+B_rst r GDN V = delay(V(s,GDN),{Tw})
+B_lch y GDN V = if( V(r,GDN)>0.5, 0, if(V(s,GDN)>0.5, 1, V(y,GDN)) )
+Rle  y GDN 1G
+.ends MONO
+
+.subckt RSTINT y u rst GDN PARAMS: IC=0 SIGN=-1 leak=0
+* LLM_DESC_START
+* Function: Resettable integrator. rst>0.5 → y=IC, else integrate
+* Pins: y, u, rst, GDN
+* Params: IC, SIGN, leak
+* LLM_DESC_END
+B1  y GDN V = if( V(rst,GDN)>0.5, {IC}, sdt( {SIGN}*V(u,GDN), {IC} ) )
+Gle y GDN value = {{leak}*V(y,GDN)}
+Rle y GDN 1G
+.ends RSTINT
+
+* =====================================================================
+* END
+* =====================================================================
