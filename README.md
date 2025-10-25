@@ -72,50 +72,45 @@ apm1-lib/
 
 ---
 
-## Example: `examples/dzielnik.cir` — Divider by closed loop
-
-Computes `C = A / B` using the canonical error-driven integrator. The product node is normalized using `VL`.
-
-```spice
-* APM1_DIVIDER_DIRECT — C = A / B   (feedback, VL-normalized product)
-* --- LIBRARY AND MACHINE SCALE ---
+* APM1_DIVISION_NOM_ONLY_APM1.cir — C = A / B (pętla, normalizacja do nominalnej)
+* —–– BIBLIOTEKA I SKALA MASZYNOWA —––
 .include apm1_lib.txt
 .param VL=10
 
-* --- TASK PARAMETERS ---
-.param A0=6      B0=3
-.param k=150     leak=1e-3
-.param L=-100    H=100
+* —–– PARAMETRY ZADANIA —––
+.param NOM_A0=6  NOM_B0=3
+.param NOM_k=150 NOM_leak=1e-3  NOM_L=-100 NOM_H=100
 
-* --- NUMERICS FOR FEEDBACK LOOPS ---
+* —–– OPCJE NUMERYCZNE (sprzężenie zwrotne) —––
 .options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9 plotwinsize=0
 
-* --- CONSTANTS VIA INTEGRATORS (no ideal DC sources) ---
-XA  A   0 0   INT     IC={A0}  SIGN=+1  leak=0
-XB  B   0 0   INT     IC={B0}  SIGN=+1  leak=0
+* —–– GENERACJA STAŁYCH (integratory z IC; brak źródeł zewn.) —––
+XNOM_A   NOM_A   0 0  INT    IC={NOM_A0}  SIGN=+1  leak=0
+XNOM_B   NOM_B   0 0  INT    IC={NOM_B0}  SIGN=+1  leak=0
 
-* --- CORE LOOP: e = A - (B*C) ---
-* MUL outputs (·)/VL, so pre-scale B by VL to realize physical product B*C at node BC
-XBV  BV  B 0  GAIN  K={VL}
-XMUL BC  BV C 0  MUL
-XERR e   A  BC 0  SUM   Ku=1  Kd=-1
+* —–– MULTIPLIKATOR Z KOMPENSACJĄ SKALI VL —––
+XNOM_bVL NOM_BVL NOM_B 0 GAIN K={VL}
+XNOM_MUL NOM_BC  NOM_BVL NOM_C 0 MUL
 
-* Loop gain and state integrator with clamps and small leak
-XK   es  e  0   GAIN  K={k}
-XC   C   es 0  INTV  SIGN=+1  IC=0  L={L} H={H} leak={leak}
+* —–– PĘTLA SPRZĘŻENIA: e = A  B*C;  dC/dt = NOM_k·e —––
+XNOM_SUM NOM_E   NOM_A   NOM_BC 0 SUM  Ku=1 Kd=-1
+XNOM_K   NOM_Es  NOM_E   0       GAIN K={NOM_k}
+XNOM_INT NOM_C   NOM_Es  0       INTV SIGN=+1 IC=0 L={NOM_L} H={NOM_H} leak={NOM_leak}
 
-* --- TRANSIENT SETUP ---
-.param Tstop=0.30  maxstep={Tstop/30000}
-.tran 0 {Tstop} 0 {maxstep}
+* —–– TRANZJENT I POMIARY —––
+.tran 0 0.06 0 1u
 
-* --- RESULTS (mandatory) ---
 *=== RESULTS_BEGIN ===
-.meas tran C_avg     AVG  V(C) FROM=0.20 TO=0.30
-.meas tran C_at25    AT   time=0.25
-.meas tran C_val25   FIND V(C) AT=C_at25
-; Ideal: C = A0/B0 = {A0/B0}
+.meas tran NOM_C_nom        PARAM {NOM_A0/NOM_B0}
+.meas tran NOM_C_avg        AVG   V(NOM_C) FROM=0.04 TO=0.06
+.meas tran NOM_C_norm_avg   AVG   ( V(NOM_C) / ({NOM_A0}/{NOM_B0}) ) FROM=0.04 TO=0.06
+.meas tran NOM_C_rel_err    AVG   ( (V(NOM_C)-({NOM_A0}/{NOM_B0})) / ({NOM_A0}/{NOM_B0}) ) FROM=0.04 TO=0.06
+.meas tran NOM_C_rel_err_pc AVG   ( 100*(V(NOM_C)-({NOM_A0}/{NOM_B0})) / ({NOM_A0}/{NOM_B0}) ) FROM=0.04 TO=0.06
+
+.meas tran NOM_t_tau   WHEN V(NOM_E)={NOM_A0}/exp(1)  FALL=1
+.meas tran NOM_t_1pct  WHEN V(NOM_E)=0.01*{NOM_A0}    FALL=1
 *=== RESULTS_END ===
-```
+
 
 **Why it converges:** The integrator drives the error `e = A − B·C` toward zero through the gain `k`. With `MUL` normalization handled by `XBV`, steady state satisfies `A ≈ B·C`, hence `C ≈ A/B`. Clamp limits (`L`, `H`) and `leak` prevent wind-up.
 
