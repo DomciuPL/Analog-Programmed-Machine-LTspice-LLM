@@ -1,7 +1,7 @@
 * =====================================================================
 * APM-1 Analog Programmed Machine
-* All subckts use explicit ground pin "GDN" (connect to node 0)
-* Voltage scale default: VL=10
+* Wszystkie subukłady używają jawnego pinu masy obliczeniowej "GDN" (do węzła 0)
+* Domyślna skala napięcia maszynowego: VL=10
 * =====================================================================
 
 .func sgn1(x) = if(x>0, 1, if(x<0, -1, 0))
@@ -14,8 +14,8 @@
 * Pins: out, u, GDN
 * Params: K
 * LLM_DESC_END
-B1 out GDN V = {-{K}*V(u,GDN)}
-Rle out GDN 1G
+B_INV  out GDN V = {-{K}*V(u,GDN)}
+R_INV  out GDN 1G
 .ends INV
 
 .subckt ADD2 out a b GDN PARAMS: wa=1 wb=1
@@ -24,8 +24,8 @@ Rle out GDN 1G
 * Pins: out, a, b, GDN
 * Params: wa, wb
 * LLM_DESC_END
-B1 out GDN V = {{wa}*V(a,GDN)+{wb}*V(b,GDN)}
-Rle out GDN 1G
+B_ADD2 out GDN V = {{wa}*V(a,GDN)+{wb}*V(b,GDN)}
+R_ADD2 out GDN 1G
 .ends ADD2
 
 .subckt ADD2W out a b GDN PARAMS: wa=1 wb=1 scale=1
@@ -34,8 +34,8 @@ Rle out GDN 1G
 * Pins: out, a, b, GDN
 * Params: wa, wb, scale
 * LLM_DESC_END
-B1 out GDN V = {( {wa}*V(a,GDN) + {wb}*V(b,GDN) )*{scale}}
-Rle out GDN 1G
+B_ADD2W out GDN V = {( {wa}*V(a,GDN) + {wb}*V(b,GDN) )*{scale}}
+R_ADD2W out GDN 1G
 .ends ADD2W
 
 .subckt SUM out u d GDN PARAMS: Ku=1 Kd=1
@@ -44,8 +44,8 @@ Rle out GDN 1G
 * Pins: out, u, d, GDN
 * Params: Ku, Kd
 * LLM_DESC_END
-B1 out GDN V = {{Ku}*V(u,GDN)+{Kd}*V(d,GDN)}
-Rle out GDN 1G
+B_SUM  out GDN V = {{Ku}*V(u,GDN)+{Kd}*V(d,GDN)}
+R_SUM  out GDN 1G
 .ends SUM
 
 .subckt SUMpinv out a b GDN PARAMS: Ka=1 Kb=1 inva=0 invb=0
@@ -55,8 +55,8 @@ Rle out GDN 1G
 * Pins: out, a, b, GDN
 * Params: Ka, Kb, inva, invb
 * LLM_DESC_END
-B1 out GDN V = {{Ka}*(if({inva},-1,1))*V(a,GDN)+{Kb}*(if({invb},-1,1))*V(b,GDN)}
-Rle out GDN 1G
+B_SUMPINV out GDN V = {{Ka}*(if({inva},-1,1))*V(a,GDN)+{Kb}*(if({invb},-1,1))*V(b,GDN)}
+R_SUMPINV out GDN 1G
 .ends SUMpinv
 
 .subckt SUMp out a b p GDN PARAMS: VL=10
@@ -65,8 +65,8 @@ Rle out GDN 1G
 * Pins: out, a, b, p, GDN
 * Params: VL
 * LLM_DESC_END
-B1 out GDN V = { V(a,GDN) + V(p,GDN)/{VL}*V(b,GDN) }
-Rle out GDN 1G
+B_SUMP out GDN V = { V(a,GDN) + V(p,GDN)/{VL}*V(b,GDN) }
+R_SUMP out GDN 1G
 .ends SUMp
 
 .subckt MUL out a b GDN PARAMS: VL=10
@@ -75,8 +75,8 @@ Rle out GDN 1G
 * Pins: out, a, b, GDN
 * Params: VL
 * LLM_DESC_END
-B1 out GDN V = { V(a,GDN)*V(b,GDN)/{VL} }
-Rle out GDN 1G
+B_MUL out GDN V = { V(a,GDN)*V(b,GDN)/{VL} }
+R_MUL out GDN 1G
 .ends MUL
 
 .subckt MULpinv out a b GDN PARAMS: VL=10 inva=0 invb=0
@@ -86,8 +86,8 @@ Rle out GDN 1G
 * Pins: out, a, b, GDN
 * Params: VL, inva, invb
 * LLM_DESC_END
-B1 out GDN V = { ((if({inva},-1,1))*V(a,GDN))*((if({invb},-1,1))*V(b,GDN))/{VL} }
-Rle out GDN 1G
+B_MULPINV out GDN V = { ((if({inva},-1,1))*V(a,GDN))*((if({invb},-1,1))*V(b,GDN))/{VL} }
+R_MULPINV out GDN 1G
 .ends MULpinv
 
 .subckt INT out u GDN PARAMS: IC=0 SIGN=-1 leak=0
@@ -96,9 +96,9 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: IC, SIGN, leak
 * LLM_DESC_END
-Bint out GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
-Gle  out GDN value = {{leak}*V(out,GDN)}
-Rle  out GDN 1G
+B_INT  out GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
+G_INT  out GDN value = {{leak}*V(out,GDN)}
+R_INT  out GDN 1G
 .ends INT
 
 .subckt INTp out u GDN PARAMS: IC=0 SIGN=-1 K=1 leak=0
@@ -107,9 +107,9 @@ Rle  out GDN 1G
 * Pins: out, u, GDN
 * Params: IC, SIGN, K, leak
 * LLM_DESC_END
-Bint out GDN V = sdt( {SIGN}*{K}*V(u,GDN), {IC} )
-Gle  out GDN value = {{leak}*V(out,GDN)}
-Rle  out GDN 1G
+B_INTP out GDN V = sdt( {SIGN}*{K}*V(u,GDN), {IC} )
+G_INTP out GDN value = {{leak}*V(out,GDN)}
+R_INTP out GDN 1G
 .ends INTp
 
 .subckt INTpinv out u GDN PARAMS: IC=0 K=1 leak=0
@@ -118,9 +118,9 @@ Rle  out GDN 1G
 * Pins: out, u, GDN
 * Params: IC, K, leak
 * LLM_DESC_END
-Bint out GDN V = sdt( {K}*V(u,GDN), {IC} )
-Gle  out GDN value = {{leak}*V(out,GDN)}
-Rle  out GDN 1G
+B_INTPINV out GDN V = sdt( {K}*V(u,GDN), {IC} )
+G_INTPINV out GDN value = {{leak}*V(out,GDN)}
+R_INTPINV out GDN 1G
 .ends INTpinv
 
 .subckt INTV out u GDN PARAMS: IC=0 SIGN=-1 L=-10 H=10 leak=0
@@ -129,10 +129,10 @@ Rle  out GDN 1G
 * Pins: out, u, GDN
 * Params: IC, SIGN, L, H, leak
 * LLM_DESC_END
-Braw x GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
-Bcl  out GDN V = limit( V(x,GDN), {L}, {H} )
-Gle  out GDN value = {{leak}*V(out,GDN)}
-Rle  out GDN 1G
+B_INTV_RAW x   GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
+B_INTV_CL  out GDN V = limit( V(x,GDN), {L}, {H} )
+G_INTV     out GDN value = {{leak}*V(out,GDN)}
+R_INTV     out GDN 1G
 .ends INTV
 
 .subckt CMPad out a d GDN PARAMS: th=0
@@ -141,8 +141,8 @@ Rle  out GDN 1G
 * Pins: out, a, d, GDN
 * Params: th
 * LLM_DESC_END
-B1 out GDN V = if( V(a,GDN)+V(d,GDN)>{th}, 1, 0 )
-Rle out GDN 1G
+B_CMPAD out GDN V = if( V(a,GDN)+V(d,GDN)>{th}, 1, 0 )
+R_CMPAD out GDN 1G
 .ends CMPad
 
 .subckt CMPda out a b d GDN
@@ -151,8 +151,8 @@ Rle out GDN 1G
 * Pins: out, a, b, d, GDN
 * Params: —
 * LLM_DESC_END
-B1 out GDN V = if( V(d,GDN)>0.5, V(a,GDN), V(b,GDN) )
-Rle out GDN 1G
+B_CMPDA out GDN V = if( V(d,GDN)>0.5, V(a,GDN), V(b,GDN) )
+R_CMPDA out GDN 1G
 .ends CMPda
 
 .subckt DPT out u w GDN PARAMS: VL=10
@@ -161,10 +161,10 @@ Rle out GDN 1G
 * Pins: out, u, w, GDN
 * Params: VL
 * LLM_DESC_END
-B1 out GDN V = { V(w,GDN)/{VL} * V(u,GDN) }
-Rin1 u   GDN 10Meg
-Rin2 w   GDN 10Meg
-Rout out GDN 1Meg
+B_DPT   out GDN V = { V(w,GDN)/{VL} * V(u,GDN) }
+R_DPT_U u   GDN 10Meg
+R_DPT_W w   GDN 10Meg
+R_DPT_O out GDN 1Meg
 .ends DPT
 
 .subckt GAIN out u GDN PARAMS: K=1
@@ -173,8 +173,8 @@ Rout out GDN 1Meg
 * Pins: out, u, GDN
 * Params: K
 * LLM_DESC_END
-B1 out GDN V = {{K}*V(u,GDN)}
-Rle out GDN 1G
+B_GAIN out GDN V = {{K}*V(u,GDN)}
+R_GAIN out GDN 1G
 .ends GAIN
 
 .subckt DIF out u GDN PARAMS: K=1 leak=0
@@ -183,9 +183,9 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: K, leak
 * LLM_DESC_END
-B1  out GDN V = {{K}*ddt(V(u,GDN))}
-Gle out GDN value = {{leak}*V(out,GDN)}
-Rle out GDN 1G
+B_DIF  out GDN V = {{K}*ddt(V(u,GDN))}
+G_DIF  out GDN value = {{leak}*V(out,GDN)}
+R_DIF  out GDN 1G
 .ends DIF
 
 .subckt LIM out u GDN PARAMS: L=0 H=1
@@ -194,8 +194,8 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: L, H
 * LLM_DESC_END
-B1 out GDN V = limit( V(u,GDN), {L}, {H} )
-Rle out GDN 1G
+B_LIM  out GDN V = limit( V(u,GDN), {L}, {H} )
+R_LIM  out GDN 1G
 .ends LIM
 
 .subckt DEADZ out u GDN PARAMS: DZ=0.05
@@ -204,8 +204,8 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: DZ
 * LLM_DESC_END
-B1 out GDN V = if( abs(V(u,GDN))<{DZ}, 0, V(u,GDN) - sgn1(V(u,GDN))*{DZ} )
-Rle out GDN 1G
+B_DEADZ out GDN V = if( abs(V(u,GDN))<{DZ}, 0, V(u,GDN) - sgn1(V(u,GDN))*{DZ} )
+R_DEADZ out GDN 1G
 .ends DEADZ
 
 .subckt ABS out u GDN
@@ -214,8 +214,8 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: —
 * LLM_DESC_END
-B1 out GDN V = abs(V(u,GDN))
-Rle out GDN 1G
+B_ABS  out GDN V = abs(V(u,GDN))
+R_ABS  out GDN 1G
 .ends ABS
 
 .subckt SGN out u GDN
@@ -224,8 +224,8 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: —
 * LLM_DESC_END
-B1 out GDN V = sgn1(V(u,GDN))
-Rle out GDN 1G
+B_SGN  out GDN V = sgn1(V(u,GDN))
+R_SGN  out GDN 1G
 .ends SGN
 
 .subckt SCHMITT y u GDN PARAMS: CEN=0 HYS=0.2
@@ -234,8 +234,8 @@ Rle out GDN 1G
 * Pins: y, u, GDN
 * Params: CEN, HYS
 * LLM_DESC_END
-B1 y GDN V = if( V(u,GDN)>{CEN+HYS/2}, 1, if( V(u,GDN)<{CEN-HYS/2}, 0, V(y,GDN) ) )
-Rle y GDN 1G
+B_SCHMITT y GDN V = if( V(u,GDN)>{CEN+HYS/2}, 1, if( V(u,GDN)<{CEN-HYS/2}, 0, V(y,GDN) ) )
+R_SCHMITT y GDN 1G
 .ends SCHMITT
 
 .subckt DELAY out u GDN PARAMS: T=1m
@@ -244,8 +244,8 @@ Rle y GDN 1G
 * Pins: out, u, GDN
 * Params: T
 * LLM_DESC_END
-B1 out GDN V = delay( V(u,GDN), {T} )
-Rle out GDN 1G
+B_DELAY out GDN V = delay( V(u,GDN), {T} )
+R_DELAY out GDN 1G
 .ends DELAY
 
 .subckt LP1 out u GDN PARAMS: tau=1m K=1
@@ -254,8 +254,8 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: tau, K
 * LLM_DESC_END
-B1 out GDN V = sdt( ( {K}*V(u,GDN) - V(out,GDN) )/{tau}, 0 )
-Rle out GDN 1G
+B_LP1 out GDN V = sdt( ( {K}*V(u,GDN) - V(out,GDN) )/{tau}, 0 )
+R_LP1 out GDN 1G
 .ends LP1
 
 .subckt HP1 out u GDN PARAMS: tau=1m K=1
@@ -264,9 +264,9 @@ Rle out GDN 1G
 * Pins: out, u, GDN
 * Params: tau, K
 * LLM_DESC_END
-B1 x   GDN V = sdt( ( {K}*V(u,GDN) - V(x,GDN) )/{tau}, 0 )
-B2 out GDN V = {K}*V(u,GDN) - V(x,GDN)
-Rle out GDN 1G
+B_HP1_INT x   GDN V = sdt( ( {K}*V(u,GDN) - V(x,GDN) )/{tau}, 0 )
+B_HP1_OUT out GDN V = {K}*V(u,GDN) - V(x,GDN)
+R_HP1     out GDN 1G
 .ends HP1
 
 .subckt S_H out u i GDN PARAMS: Ron=1 Roff=1G Ch=100n
@@ -275,11 +275,11 @@ Rle out GDN 1G
 * Pins: out, u, i, GDN
 * Params: Ron, Roff, Ch
 * LLM_DESC_END
-S1 u n i GDN SW
+S_S_H u n i GDN SW
 .model SW SW(Ron={Ron} Roff={Roff} Vt=0.5 Vh=0)
-Ch n GDN {Ch}
-Ebuf out GDN value = { V(n,GDN) }
-Rle out GDN 1G
+C_S_H n GDN {Ch}
+E_S_H out GDN value = { V(n,GDN) }
+R_S_H out GDN 1G
 .ends S_H
 
 * ---------------- HYBRID / DIGITAL-STYLE CORE ----------------
@@ -290,7 +290,7 @@ Rle out GDN 1G
 * Pins: out, GDN
 * Params: f, duty, vhi, vlo, tr, tf
 * LLM_DESC_END
-Vclk out GDN PULSE({vlo} {vhi} 0 {tr} {tf} {duty/f} {1/f})
+V_CLK out GDN PULSE({vlo} {vhi} 0 {tr} {tf} {duty/f} {1/f})
 .ends CLK
 
 .subckt DAC8 y b7 b6 b5 b4 b3 b2 b1 b0 GDN PARAMS: VL=10
@@ -299,8 +299,8 @@ Vclk out GDN PULSE({vlo} {vhi} 0 {tr} {tf} {duty/f} {1/f})
 * Pins: y, b7..b0, GDN
 * Params: VL
 * LLM_DESC_END
-B1 y GDN V = { {VL} * ( (128*V(b7,GDN)+64*V(b6,GDN)+32*V(b5,GDN)+16*V(b4,GDN)+8*V(b3,GDN)+4*V(b2,GDN)+2*V(b1,GDN)+V(b0,GDN)) / 255 ) }
-Rle y GDN 1G
+B_DAC8 y GDN V = { {VL} * ( (128*V(b7,GDN)+64*V(b6,GDN)+32*V(b5,GDN)+16*V(b4,GDN)+8*V(b3,GDN)+4*V(b2,GDN)+2*V(b1,GDN)+V(b0,GDN)) / 255 ) }
+R_DAC8 y GDN 1G
 .ends DAC8
 
 .subckt MUX4 y a b c d s1 s0 GDN
@@ -309,8 +309,8 @@ Rle y GDN 1G
 * Pins: y, a, b, c, d, s1, s0, GDN
 * Params: —
 * LLM_DESC_END
-B1 y GDN V = if( V(s1,GDN)>0.5, if(V(s0,GDN)>0.5, V(d,GDN), V(c,GDN)), if(V(s0,GDN)>0.5, V(b,GDN), V(a,GDN)) )
-Rle y GDN 1G
+B_MUX4 y GDN V = if( V(s1,GDN)>0.5, if(V(s0,GDN)>0.5, V(d,GDN), V(c,GDN)), if(V(s0,GDN)>0.5, V(b,GDN), V(a,GDN)) )
+R_MUX4 y GDN 1G
 .ends MUX4
 
 .subckt EDGE_R y u GDN PARAMS: Td=1u
@@ -319,8 +319,8 @@ Rle y GDN 1G
 * Pins: y, u, GDN
 * Params: Td
 * LLM_DESC_END
-B1 y GDN V = if( V(u,GDN) > delay(V(u,GDN),{Td}), 1, 0 )
-Rle y GDN 1G
+B_EDGE_R y GDN V = if( V(u,GDN) > delay(V(u,GDN),{Td}), 1, 0 )
+R_EDGE_R y GDN 1G
 .ends EDGE_R
 
 .subckt EDGE_F y u GDN PARAMS: Td=1u
@@ -329,8 +329,8 @@ Rle y GDN 1G
 * Pins: y, u, GDN
 * Params: Td
 * LLM_DESC_END
-B1 y GDN V = if( V(u,GDN) < delay(V(u,GDN),{Td}), 1, 0 )
-Rle y GDN 1G
+B_EDGE_F y GDN V = if( V(u,GDN) < delay(V(u,GDN),{Td}), 1, 0 )
+R_EDGE_F y GDN 1G
 .ends EDGE_F
 
 .subckt PWM y u GDN PARAMS: f=1k VL=10
@@ -339,9 +339,9 @@ Rle y GDN 1G
 * Pins: y, u, GDN
 * Params: f, VL
 * LLM_DESC_END
-Btri t GDN V = (2/PI)*asin(sin(2*PI*{f}*time))
-B1   y GDN V = if( V(u,GDN)/{VL} > (V(t,GDN)+1)/2, 1, 0 )
-Rle  y GDN 1G
+B_PWM_TRI t GDN V = (2/PI)*asin(sin(2*PI*{f}*time))
+B_PWM     y GDN V = if( V(u,GDN)/{VL} > (V(t,GDN)+1)/2, 1, 0 )
+R_PWM     y GDN 1G
 .ends PWM
 
 .subckt MONO y trig GDN PARAMS: Td=1u Tw=1m
@@ -350,10 +350,10 @@ Rle  y GDN 1G
 * Pins: y, trig, GDN
 * Params: Td, Tw
 * LLM_DESC_END
-B_set s GDN V = if( V(trig,GDN) > delay(V(trig,GDN),{Td}), 1, 0 )
-B_rst r GDN V = delay(V(s,GDN),{Tw})
-B_lch y GDN V = if( V(r,GDN)>0.5, 0, if(V(s,GDN)>0.5, 1, V(y,GDN)) )
-Rle  y GDN 1G
+B_MONO_SET s GDN V = if( V(trig,GDN) > delay(V(trig,GDN),{Td}), 1, 0 )
+B_MONO_RST r GDN V = delay(V(s,GDN),{Tw})
+B_MONO_LCH y GDN V = if( V(r,GDN)>0.5, 0, if(V(s,GDN)>0.5, 1, V(y,GDN)) )
+R_MONO     y GDN 1G
 .ends MONO
 
 .subckt RSTINT y u rst GDN PARAMS: IC=0 SIGN=-1 leak=0
@@ -362,9 +362,9 @@ Rle  y GDN 1G
 * Pins: y, u, rst, GDN
 * Params: IC, SIGN, leak
 * LLM_DESC_END
-B1  y GDN V = if( V(rst,GDN)>0.5, {IC}, sdt( {SIGN}*V(u,GDN), {IC} ) )
-Gle y GDN value = {{leak}*V(y,GDN)}
-Rle y GDN 1G
+B_RSTINT y GDN V = if( V(rst,GDN)>0.5, {IC}, sdt( {SIGN}*V(u,GDN), {IC} ) )
+G_RSTINT y GDN value = {{leak}*V(y,GDN)}
+R_RSTINT y GDN 1G
 .ends RSTINT
 
 * =====================================================================
