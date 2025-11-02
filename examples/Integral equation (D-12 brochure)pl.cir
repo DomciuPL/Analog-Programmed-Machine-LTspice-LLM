@@ -1,0 +1,154 @@
+* ===================================================================================
+* ==                FINALNA WERSJA DOKUMENTACJI - WERSJA HYBRYDOWA                 ==
+* ===================================================================================
+*
+* Plik:     Integral_equation_D-12_brochure.cir
+* Cel:      Odtworzenie wyników historycznej symulacji z broszury D-12,
+*           przedstawiającej rozwiązanie równania całkowego na komputerze analogowym.
+*
+* ===================================================================================
+*
+*                                 TREŚĆ ZADANIA
+*
+* Zadanie pochodzi z broszury technicznej D-12. Celem jest rozwiązanie poniższego
+* równania całkowego, a w szczególności znalezienie takiej wartości parametru 'A',
+* dla której rozwiązanie spełnia warunek brzegowy: y(x=1) = 1.
+*
+*                      x
+*                     /
+* y(x) = 0.25 +       |    A * y(t) * [1 + 0.14*y(t)] * [1 + 0.02752*y(t)]
+*                     |   -------------------------------------------------- dt
+*                    /                 [1 - y(t)] * [1 - A*t]
+*                   0
+*
+* z warunkiem początkowym y(0) = 0.25. Broszura podaje, że poszukiwana wartość
+* to A = 0.2563. Celem tej symulacji jest odtworzenie historycznego wyniku, w tym
+* pokazanie zachowania układu dla różnych wartości parametru A.
+*
+* ===================================================================================
+*
+*                  ARCHITEKTURA ROZWIĄZANIA I SCHEMAT BLOKOWY
+*
+* Zastosowano architekturę hybrydową, która łączy "najlepsze z obu światów":
+* 1. MATEMATYCZNA POPRAWNOŚĆ: Obliczenie pochodnej dy/dx odbywa się krok po kroku,
+*    używając prostych bloków (MUL, SUM, GAIN) z biblioteki komputera analogowego.
+*    Gwarantuje to, że złożone równanie jest obliczane poprawnie.
+* 2. NUMERYCZNA STABILNOŚĆ: Całkowanie (integracja) wyniku jest realizowane za
+*    pomocą najstabilniejszej metody w SPICE: ładowania kondensatora (C) za
+*    pomocą źródła prądowego (G).
+*
+*                    +-------------------------------------------------+
+*                    |      BLOK OBLICZENIOWY "KOMPUTERA ANALOGOWEGO"    |
+*                    | Oblicza dy/dx używając prostych bloków (MUL, SUM) | ----> V(dydx)
+*                    | Wejścia: V(y), V(x), A                            |
+*                    +-------------------------------------------------+
+*                       ^                                                 |
+*                       |   (Sprzężenie zwrotne)                            |
+*                       |                                                 |
+*                    +--|-------------------------------------------------+
+*                    |  |
+*                    |  |       +--------------------------------------------+
+*                    |  |       |             RDZEŃ INTEGRATORA SPICE        |
+*                    |  +------>| G_integrator (Źródło prądowe I = V(dydx))  |
+*                    | V(y)     +--------------------------------------------+
+*                    |                  | (prąd)
+*                    |                  v
+*                    |          +------------------+
+*                    |          |  C_integrator    |------> V(y) (WYNIK)
+*                    |          |  (Kondensator 1F)|
+*                    |          +------------------+
+*
+* ===================================================================================
+*
+*                         DO CZEGO MOGŁY SŁUŻYĆ TAKIE OBLICZENIA?
+*
+* Równania o takiej strukturze, gdzie w mianowniku znajduje się człon typu (1-y),
+* często modelują zjawiska o charakterze "eksplozyjnym" lub "lawinowym", które
+* gwałtownie przyspieszają w miarę zbliżania się do pewnego punktu krytycznego.
+* Potencjalne zastosowania to:
+*
+* 1. REAKCJE CHEMICZNE: Modelowanie reakcji autokatalitycznych, gdzie produkt reakcji
+*    jest jednocześnie jej katalizatorem. Tempo reakcji rośnie lawinowo, aż do
+*    wyczerpania substratów (co symbolizuje człon (1-y)).
+*
+* 2. FIZYKA I TECHNIKA: Analiza niestabilności termicznej (thermal runaway) w
+*    reaktorach chemicznych lub bateriach. 'y' mogłoby reprezentować temperaturę,
+*    która rośnie w pętli dodatniego sprzężenia zwrotnego, aż do osiągnięcia
+*    punktu krytycznego, w którym następuje eksplozja lub zapłon.
+*
+* 3. DYNAMIKA POPULACJI: Modelowanie wzrostu populacji w specyficznych warunkach,
+*    gdzie zbliżanie się do granicy pojemności środowiska powoduje gwałtowne
+*    i niestabilne zmiany, zamiast łagodnego nasycenia (jak w klasycznym
+*    modelu logistycznym).
+*
+* 4. EKONOMIA: Modelowanie baniek spekulacyjnych na rynkach finansowych, gdzie
+*    wzrost ceny aktywa napędza dalsze zakupy, prowadząc do gwałtownego wzrostu
+*    (asymptoty), który kończy się krachem.
+*
+* Zadanie to jest więc doskonałym przykładem analizy stabilności złożonego
+* systemu dynamicznego.
+*
+* ===================================================================================
+
+.include apm1_lib.txt
+
+* =====================================================================
+* Parameters and Global Settings
+* =====================================================================
+.param VL=10
+* Dyrektywa .step uruchomi symulację dla każdej z wartości A z listy.
+.step param A list 0.3000 0.2927 0.2571 0.2563
+
+* =====================================================================
+* The Canonical G+C Integrator
+* =====================================================================
+* Rdzeń rozwiązania. Całkuje wartość z węzła 'dydx'.
+C_integrator y 0 1 IC=0.25
+G_integrator 0 y value={V(dydx)}
+
+* =====================================================================
+* Step-by-Step "Analog Computer" Calculation of the Derivative
+* =====================================================================
+* Obliczenia krok po kroku gwarantują poprawność matematyczną.
+
+* --- Constant and Input Sources ---
+V_one one 0 DC 1
+V_A A_in 0 {A}
+* Generowanie sygnału napięciowego x(t) równego czasowi symulacji.
+B_time x 0 V={time}
+
+* --- Numerator (Num) Sub-circuit ---
+* Num = A * y * (1 + 0.14*y) * (1 + 0.02752*y)
+X_g_n1a y_n1a y 0 GAIN K=0.14
+X_s_n1 term_n1 one y_n1a 0 SUM Ku=1 Kd=1
+X_g_n2a y_n2a y 0 GAIN K=0.02752
+X_s_n2 term_n2 one y_n2a 0 SUM Ku=1 Kd=1
+X_g_A_vl A_vl A_in 0 GAIN K={VL}
+X_m_p1 p1 A_vl y 0 MUL
+X_g_p1_vl p1_vl p1 0 GAIN K={VL}
+X_m_p2 p2 p1_vl term_n1 0 MUL
+X_g_p2_vl p2_vl p2 0 GAIN K={VL}
+X_m_Num Num p2_vl term_n2 0 MUL
+
+* --- Denominator (Den) Sub-circuit ---
+* Den = (1 - y) * (1 - A*x)
+X_s_d1 term_d1 one y 0 SUM Ku=1 Kd=-1
+X_m_Ax Ax A_vl x 0 MUL
+X_s_d2 term_d2 one Ax 0 SUM Ku=1 Kd=-1
+X_g_d1_vl term_d1_vl term_d1 0 GAIN K={VL}
+X_m_Den Den term_d1_vl term_d2 0 MUL
+
+* --- Final Division ---
+* Proste źródło B-source wykonuje ostateczne, czyste dzielenie.
+B_division dydx 0 V = V(Num) / V(Den)
+
+* =====================================================================
+* Simulation Control
+* =====================================================================
+.options method=gear maxord=2 reltol=1e-9 abstol=1e-12 vntol=1e-9 maxstep=0.001
+.tran 0.001 1 0 uic
+
+*=== RESULTS_BEGIN ===
+.meas tran y_at_1 find V(y) at 1.0
+.meas tran A_val PARAM A
+*=== RESULTS_END ===

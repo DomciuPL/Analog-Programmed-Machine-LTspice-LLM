@@ -1,0 +1,153 @@
+* ===================================================================================
+* ==           FINAL DOCUMENTED VERSION - HYBRID ARCHITECTURE                    ==
+* ===================================================================================
+*
+* File:     Integral_equation_D-12_brochure.cir
+* Purpose:  To reconstruct the results of a historical simulation from the D-12
+*           brochure, which demonstrates the solution of an integral equation on an
+*           analog computer.
+*
+* ===================================================================================
+*
+*                              PROBLEM DESCRIPTION
+*
+* This problem originates from the D-12 technical brochure. The goal is to solve the
+* following integral equation, and specifically to find the value of the parameter 'A'
+* for which the solution satisfies the boundary condition: y(x=1) = 1.
+*
+*                      x
+*                     /
+* y(x) = 0.25 +       |    A * y(t) * [1 + 0.14*y(t)] * [1 + 0.02752*y(t)]
+*                     |   -------------------------------------------------- dt
+*                    /                 [1 - y(t)] * [1 - A*t]
+*                   0
+*
+* with the initial condition y(0) = 0.25. The brochure states that the target value is
+* A = 0.2563. The goal of this simulation is to reproduce the historical result,
+* including showing the system's behavior for different values of parameter A.
+*
+* ===================================================================================
+*
+*                  SOLUTION ARCHITECTURE AND BLOCK DIAGRAM
+*
+* A hybrid architecture was used, combining the "best of both worlds":
+* 1. MATHEMATICAL CORRECTNESS: The calculation of the derivative dy/dx is performed
+*    step-by-step using simple blocks (MUL, SUM, GAIN) from the analog computer
+*    library. This ensures that the complex equation is evaluated correctly.
+* 2. NUMERICAL STABILITY: The integration of the result is implemented using the
+*    most stable method in SPICE: charging a capacitor (C) with a current
+*    source (G).
+*
+*                    +-------------------------------------------------+
+*                    |      "ANALOG COMPUTER" COMPUTATION BLOCK        |
+*                    |  Calculates dy/dx using simple blocks (MUL, SUM)| ----> V(dydx)
+*                    |  Inputs: V(y), V(x), A                           |
+*                    +-------------------------------------------------+
+*                       ^                                                 |
+*                       |       (Feedback Loop)                           |
+*                       |                                                 |
+*                    +--|-------------------------------------------------+
+*                    |  |
+*                    |  |       +--------------------------------------------+
+*                    |  |       |             SPICE INTEGRATOR CORE          |
+*                    |  +------>| G_integrator (Current Source I = V(dydx))  |
+*                    | V(y)     +--------------------------------------------+
+*                    |                  | (current)
+*                    |                  v
+*                    |          +------------------+
+*                    |          |  C_integrator    |------> V(y) (RESULT)
+*                    |          |  (1F Capacitor)  |
+*                    |          +------------------+
+*
+* ===================================================================================
+*
+*                    WHAT COULD SUCH CALCULATIONS BE USED FOR?
+*
+* Equations with this structure, containing a (1-y) term in the denominator,
+* often model "explosive" or "runaway" phenomena that accelerate dramatically
+* as they approach a critical point. Potential applications include:
+*
+* 1. CHEMICAL REACTIONS: Modeling autocatalytic reactions where the product of a
+*    reaction is also its catalyst. The reaction rate grows exponentially until
+*    the reactants are depleted (symbolized by the (1-y) term).
+*
+* 2. PHYSICS AND ENGINEERING: Analysis of thermal runaway in chemical reactors or
+*    batteries. 'y' could represent temperature, which rises in a positive
+*    feedback loop until a critical point is reached, leading to an explosion
+*    or ignition.
+*
+* 3. POPULATION DYNAMICS: Modeling population growth under specific conditions where
+*    approaching the environmental carrying capacity causes rapid, unstable changes
+*    instead of a smooth saturation (as in the classic logistic model).
+*
+* 4. ECONOMICS: Modeling speculative bubbles in financial markets, where the rising
+*    price of an asset drives further buying, leading to a sharp ascent (the
+*    asymptote) that ends in a crash.
+*
+* This problem is therefore an excellent example of the stability analysis of a
+* complex dynamical system.
+*
+* ===================================================================================
+
+.include apm1_lib.txt
+
+* =====================================================================
+* Parameters and Global Settings
+* =====================================================================
+.param VL=10
+* The .step directive will run the simulation for each value of A from the list.
+.step param A list 0.3000 0.2927 0.2571 0.2563
+
+* =====================================================================
+* The Canonical G+C Integrator
+* =====================================================================
+* The core of the solution. It integrates the value from the 'dydx' node.
+C_integrator y 0 1 IC=0.25
+G_integrator 0 y value={V(dydx)}
+
+* =====================================================================
+* Step-by-Step "Analog Computer" Calculation of the Derivative
+* =====================================================================
+* Step-by-step calculations guarantee mathematical correctness.
+
+* --- Constant and Input Sources ---
+V_one one 0 DC 1
+V_A A_in 0 {A}
+* Generate a voltage signal x(t) equal to the simulation time.
+B_time x 0 V={time}
+
+* --- Numerator (Num) Sub-circuit ---
+* Num = A * y * (1 + 0.14*y) * (1 + 0.02752*y)
+X_g_n1a y_n1a y 0 GAIN K=0.14
+X_s_n1 term_n1 one y_n1a 0 SUM Ku=1 Kd=1
+X_g_n2a y_n2a y 0 GAIN K=0.02752
+X_s_n2 term_n2 one y_n2a 0 SUM Ku=1 Kd=1
+X_g_A_vl A_vl A_in 0 GAIN K={VL}
+X_m_p1 p1 A_vl y 0 MUL
+X_g_p1_vl p1_vl p1 0 GAIN K={VL}
+X_m_p2 p2 p1_vl term_n1 0 MUL
+X_g_p2_vl p2_vl p2 0 GAIN K={VL}
+X_m_Num Num p2_vl term_n2 0 MUL
+
+* --- Denominator (Den) Sub-circuit ---
+* Den = (1 - y) * (1 - A*x)
+X_s_d1 term_d1 one y 0 SUM Ku=1 Kd=-1
+X_m_Ax Ax A_vl x 0 MUL
+X_s_d2 term_d2 one Ax 0 SUM Ku=1 Kd=-1
+X_g_d1_vl term_d1_vl term_d1 0 GAIN K={VL}
+X_m_Den Den term_d1_vl term_d2 0 MUL
+
+* --- Final Division ---
+* A simple B-source performs the final, clean division.
+B_division dydx 0 V = V(Num) / V(Den)
+
+* =====================================================================
+* Simulation Control
+* =====================================================================
+.options method=gear maxord=2 reltol=1e-9 abstol=1e-12 vntol=1e-9 maxstep=0.001
+.tran 0.001 1 0 uic
+
+*=== RESULTS_BEGIN ===
+.meas tran y_at_1 find V(y) at 1.0
+.meas tran A_val PARAM A
+*=== RESULTS_END ===
