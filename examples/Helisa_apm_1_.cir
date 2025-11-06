@@ -1,0 +1,177 @@
+* ==============================================================
+* Helisa_apm_1_.cir — B-DNA: Δφ(θ), base-pair index, full XY projection
+* APM-1 blocks in active use: INTp (integrators, feedback loops), DPT ((a*b)/VL scaling).
+* Machine voltage (VL) sets the analog computing scale.
+* ==============================================================
+
+.include apm1_lib.txt
+.param VL=10
+
+* =====================[ ASCII SYSTEM OVERVIEW ]=====================
+*                   (machine ground = node 0)
+*
+*  one  INTp:θ(t)=(2πF·1)dt  φ1=θ
+*
+*     INTp:z(t)=(P·1)dt   den=1+z/fproj   w=VL/den
+*
+*  φ2 = θ + φ_sep                      (B-source algebra)
+*
+*  r1=R+g·cosθ   r2=Rg·cosθ           (B-sources)
+*
+*    x1=r1·cosφ1                  (B)
+*    y1=r1·sinφ1                  (B)
+*                     x1'=(w/VL)·x1  DPT(out, u=x1, w)
+*  similarly: x2,y2 and x2',y2'
+*  depth cue: z' = z/den (B-source)
+*
+*  Δφ from trajectory:
+*  cosΔ = (x1·x2 + y1·y2)/(r1·r2)    Δφ = arccos(limited cosΔ)
+*
+* =====================[ APM-1 BLOCK PINOUTS ]=======================
+*  INTp  (integrator, positive input):
+*     Xname  out   u    0   INTp  IC=<init>  SIGN=±1  K=<gain>  [LEAK=<α>]
+*     d(out)/dt = SIGN·K·(u/VL)  LEAK·out/VL
+*
+*  DPT (divide/multiply via VL rule):
+*     Xname  out   u    w   0   DPT
+*     out = (u·w)/VL   with w=VL/den we obtain out = u/den
+*
+* =====================[ FORMULAS AND ASSUMPTIONS ]==================
+*  B-DNA geometry:
+*    bp_per_turn = 10.5
+*    rise_bp     = 0.34 nm  pitch  3.57 nm/turn
+*    cylindrical backbone radius R (here R_nm=1.0, mapped by nm2VL).
+*    groove asymmetry: minor:major arc lengths = 12 Å : 22 Å
+*    implemented as constant angular separation:
+*       α_minor = 2π·(12/34),  α_major = 2π  α_minor,  φ_sep = α_minor.
+*
+*  Kinematics on APM-1 integrators (feedback loops):
+*     θ(t) =  2πF dt ;   z(t) =  P dt ,  with  P = F·pitch
+*
+*  Coordinates (trigonometry in B-sources, scaled by VL):
+*     r1 = R + g·cosθ ;  r2 = R  g·cosθ
+*     φ1 = θ ;  φ2 = θ + φ_sep
+*     xk = rk·cosφk ;  yk = rk·sinφk
+*
+*  Perspective pinhole projection:
+*     den = 1 + z/fproj ;  w = VL/den
+*     x' = (w/VL)·x ,  y' = (w/VL)·y  (realized by DPT)
+*     z' = z/den
+*
+*  Scaling:
+*     VL=10 is the machine voltage. All products obey (a·b)/VL.
+*     DPT enforces the VL rule in projection scaling.
+*     nm2VL=1 (identity) for this run; adjust to remap nmVL.
+*
+*  Measurements (.meas):
+*     AVG … FROM … TO …,  FIND … AT t,  MIN/MAX … FROM … TO …
+*     Derived parameters via PARAM=‘…’ for pitch, groove metrics, Δφ, etc.
+
+* =====================[ PARAMETERS ]================================
+.param R_nm=1.0
+.param bp_per_turn=10.5
+.param rise_bp_nm=0.34
+.param pitch_nm = {bp_per_turn*rise_bp_nm}          ; 3.57 nm/turn
+
+.param F=5
+.param nm2VL=1
+.param R   ={nm2VL*R_nm}                             ; radius [VL]
+.param P   ={F*pitch_nm*nm2VL}                       ; z(t)=P·t
+
+.param alpha_minor = {2*pi*12/34}                    ; 127.06°
+.param alpha_major = {2*pi - alpha_minor}            ; 232.94°
+.param phi_sep     = {alpha_minor}
+
+.param LEAKi = 1e-4          ; small leak for numerical stability
+.param g=0                   ; optional tiny radial modulation
+.param fproj = {10*R}        ; focal length in [VL]
+.param dth = {2*pi/bp_per_turn}   ; turn per single base pair
+
+Vone one 0 DC 1
+
+* =====================[ APM-1 INTEGRATORS ]=========================
+Xz   z   one 0 INTp  IC=0  SIGN=+1  K={P}          LEAK={LEAKi}
+Xth  th  one 0 INTp  IC=0  SIGN=+1  K={2*pi*F}     LEAK={LEAKi}
+
+* =====================[ RADII, ANGLES, COORDS ]=====================
+B_r1  r1  0  V={ R + g*cos(V(th)) }
+R_r1  r1  0  1G
+B_r2  r2  0  V={ R - g*cos(V(th)) }
+R_r2  r2  0  1G
+
+B_phi1  phi1 0  V={ V(th) }
+R_phi1  phi1 0  1G
+B_phi2  phi2 0  V={ V(th) + phi_sep }
+R_phi2  phi2 0  1G
+
+B_x1  x1  0  V={ V(r1)*cos(V(phi1)) }
+R_x1  x1  0  1G
+B_y1  y1  0  V={ V(r1)*sin(V(phi1)) }
+R_y1  y1  0  1G
+B_x2  x2  0  V={ V(r2)*cos(V(phi2)) }
+R_x2  x2  0  1G
+B_y2  y2  0  V={ V(r2)*sin(V(phi2)) }
+R_y2  y2  0  1G
+
+* =====================[ PERSPECTIVE VIA DPT ]=======================
+B_den  den 0  V={ 1 + V(z)/fproj }
+R_den  den 0  1G
+B_w    w   0  V={ VL / V(den) }
+R_w    w   0  1G
+Xx1p   x1p x1 w 0 DPT
+Xx2p   x2p x2 w 0 DPT
+Xy1p   y1p y1 w 0 DPT
+Xy2p   y2p y2 w 0 DPT
+B_zp   zp  0  V={ V(z)/V(den) }
+R_zp   zp  0  1G
+
+* =====================[ DIAGNOSTICS ]===============================
+B_dx  dx  0  V={ V(x2) - V(x1) }
+R_dx  dx  0  1G
+B_dy  dy  0  V={ V(y2) - V(y1) }
+R_dy  dy  0  1G
+B_gap gap 0  V={ sqrt( V(dx)*V(dx) + V(dy)*V(dy) ) }
+R_gap gap 0  1G
+
+B_cosd  cosd 0  V={ (V(x1)*V(x2)+V(y1)*V(y2)) / max(1e-12, V(r1)*V(r2)) }
+R_cosd  cosd 0  1G
+B_dphi  dphi 0  V={ acos( limit(V(cosd), -1, 1) ) }
+R_dphi  dphi 0  1G
+
+B_bpidx bpidx 0  V={ V(th)/dth }
+R_bpidx bpidx 0  1G
+B_phase phase 0  V={ V(th)/(2*pi) - floor(V(th)/(2*pi)) }
+R_phase phase 0  1G
+
+* =====================[ MEASUREMENTS ]==============================
+.param T_STOP=1
+.save V(r1) V(r2) V(z) V(th) V(x1) V(y1) V(x2) V(y2) V(x1p) V(y1p) V(x2p) V(y2p) V(zp) V(den) V(w) V(dx) V(dy) V(gap) V(cosd) V(dphi) V(bpidx) V(phase)
+
+.meas tran r1_avg        AVG  V(r1)    FROM 0 TO {T_STOP}
+.meas tran r2_avg        AVG  V(r2)    FROM 0 TO {T_STOP}
+.meas tran z_end         FIND V(z)     AT   {T_STOP}
+.meas tran th_end        FIND V(th)    AT   {T_STOP}
+.meas tran w_min         MIN  V(w)     FROM 0 TO {T_STOP}
+.meas tran w_max         MAX  V(w)     FROM 0 TO {T_STOP}
+.meas tran x1p_q         FIND V(x1p)   AT   {0.25*T_STOP}
+.meas tran y1p_q         FIND V(y1p)   AT   {0.25*T_STOP}
+.meas tran x2p_q         FIND V(x2p)   AT   {0.25*T_STOP}
+.meas tran y2p_q         FIND V(y2p)   AT   {0.25*T_STOP}
+
+.meas tran s_minor       PARAM='{R}*{alpha_minor}'
+.meas tran s_major       PARAM='{R}*{alpha_major}'
+.meas tran groove_ratio  PARAM='{s_major/s_minor}'
+
+.meas tran pitch_est     PARAM='{z_end}/{F}'
+.meas tran dphi_avg      AVG   V(dphi) FROM 0 TO {T_STOP}
+.meas tran dphi_err      PARAM='{dphi_avg - alpha_minor}'
+
+* =====================[ OUTPUT TABLES ]=============================
+.print tran time V(x1) V(y1) V(z) V(x2) V(y2) V(gap)
+.print tran time V(x1p) V(y1p) V(x2p) V(y2p) V(zp) V(w)
+.print tran time V(dphi) V(bpidx) V(phase)
+
+* =====================[ NUMERICS ]=================================
+.options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9 gmin=1e-12 cshunt=1e-15 plotwinsize=0
+.tran 0 {T_STOP} 0 {T_STOP/2000}
+.end
