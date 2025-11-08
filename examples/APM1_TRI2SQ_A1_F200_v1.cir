@@ -1,0 +1,107 @@
+* ===================================================================
+* APM-1 — Triangle Differentiation to Square Wave (+/1) + 0/1 map
+* Fully library-pure (apm1_lib.txt): CLK, ADD2W, GAIN, INT, DIF, LIM
+*
+* PURPOSE
+*   Realize an ideal differentiator for a triangle waveform using
+*   APM-1 building blocks only. The chain produces:
+*     tri(t)  ——d/dt  y(t)  square ±1
+*     y01(t) = affine(y)  [0,1] for logic or plotting.
+*
+* MODELING PRINCIPLES (Analog Computer Style)
+*   • Machine voltage scale VL defines the “unit level”.
+*   • Variable scaling preserves numerics: the integrator builds a
+*     triangle with slope ±4·A·f0 so that the derivative is constant
+*     on plateaus. The differentiator gain compensates that slope.
+*   • No algebraic loops. All blocks have dynamical pins and GDN.
+*   • Limiter confines the machine variable to ±1 to stabilize flanks.
+*
+* EXPECTED BEHAVIOR
+*   For the triangle with amplitude ±A and frequency f0:
+*     d(tri)/dt = ±(4·A·f0) on plateaus.
+*   With Kdif = 1/(4·A·f0) the differentiated output is
+*     y(t)  +1 on the second half-period, 1 on the first.
+*   The 0/1 mapped signal has duty  0.5.
+*
+* HOW TO READ THE MEASUREMENTS
+*   Y_abs   — average of |y| over one period   1.
+*   Y01_dut — average of y01 over one period   0.5 (duty).
+*   Y_neg   — average y over the first half-period (away from edges)
+*               1 with the chosen sign convention.
+*   Y_pos   — average y over the second half-period   +1.
+*
+* BLOCK DIAGRAM (library hierarchy)
+*
+*      +-----------+    +--------------+    +-----------+    +-----------+
+*      |  CLK f0   |--->|  ADD2W (2·s -1) |-->|  GAIN   |--->|   INT     |
+*      |  0/1 s01  |    |   spm1 = ±1   |    | 4·A·f0  |    |  tri(t)   |
+*      +-----------+    +--------------+    +-----------+    +-----------+
+*                                                                |
+*                                                                v
+*                         +-----------+    +-----------+    +------------------+
+*                         |   DIF     |--->|   LIM     |--->| ADD2W (0.5y+0.5) |
+*                         | K=1/(4Af0)|   |  L=1 H=1 |    |   y01  [0,1]    |
+*                         +-----------+    +-----------+    +------------------+
+*                                |
+*                                +--> y(t)  square ±1
+*
+* RUNTIME NOTES
+*   • Gear (order 2) is used for robust transients near flanks.
+*   • The time step 1 µs at T0=1/f0=5 ms gives 5000 samples/period.
+*   • All “RESULTS” are computed with margin eps away from edges.
+* ===================================================================
+
+.include apm1_lib.txt
+
+* ---- Machine scale and signal parameters ------------------------------------
+.param VL=10                 ; machine voltage unit
+.param A=1                   ; triangle amplitude (±A)
+.param f0=200                ; frequency [Hz]
+.param T0={1/f0}             ; period
+
+* ---- Sources (library-pure) -------------------------------------------------
+XONE  one   0  CLK  f=1     duty=1   vhi=1  vlo=1           ; constant “1”
+XCLK  s01   0  CLK  f={f0}  duty=0.5 vhi=1  vlo=0           ; 0/1 clock
+
+* ---- 0/1  ±1 : spm1 = 2*s01  1 -------------------------------------------
+XPM1  spm1  s01 one 0  ADD2W  wa=2     wb=-1   scale=1      ; spm1  {1,+1}
+
+* ---- Integrator builds the triangle ±A (slope = ±4·A·f0) --------------------
+XGIN  u_int spm1 0    GAIN  K={4*A*f0}
+XINT  tri   u_int 0   INT   IC=0  SIGN=1  leak=0
+
+* ---- Differentiation and limiting to ±1 -------------------------------------
+*      d(tri)/dt = ±(4·A·f0)    Kdif = 1/(4·A·f0) for y_pos  +1 on 2nd half
+XDIF  y_raw tri 0  DIF  K={-1/(4*A*f0)}  leak=0
+XLIM  y     y_raw 0  LIM  L=-1  H=1
+
+* ---- 0/1 mapping on library blocks: y01 = 0.5*y + 0.5*one -------------------
+XMAP  y01   y  one 0  ADD2W  wa=0.5  wb=0.5  scale=1
+
+* ---- Analysis control -------------------------------------------------------
+.options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9
+.tran 0 20m 0 1u
+.save V(tri) V(y) V(y01) V(s01)
+
+* ---- RESULTS (parametric windows, margin away from edges) -------------------
+.param eps={0.1*T0}      ; edge margin
+.param k=2               ; which period to evaluate
+
+.meas tran Y_abs    AVG  abs(V(y)) FROM={k*T0}               TO={(k+1)*T0}
+.meas tran Y01_dut  AVG  V(y01)    FROM={k*T0}               TO={(k+1)*T0}
+.meas tran Y_neg    AVG  V(y)      FROM={k*T0+eps}           TO={k*T0+T0/2-eps}
+.meas tran Y_pos    AVG  V(y)      FROM={k*T0+T0/2+eps}      TO={(k+1)*T0-eps}
+
+* INTERPRETATION GUIDE
+*   • Y_abs  1    correct normalization of the differentiator.
+*   • Y01_dut  0.5   equal dwell times of ±1 levels (square wave).
+*   • Y_neg  1, Y_pos  +1   correct polarity per K in DIF.
+*   Sensitivity: decreasing eps probes closer to edges and may reduce
+*   |Y_*| slightly due to limiter dynamics and timestep.
+*
+* OPTIONAL PARAMETRIC TESTS (uncomment to verify invariance)
+*   .step param A 0.5 2 0.5
+*   .step param f0 100 400 100
+*   With Kint=4·A·f0 and Kdif=1/(4·A·f0) the metrics remain invariant.
+* ===================================================================
+.end
