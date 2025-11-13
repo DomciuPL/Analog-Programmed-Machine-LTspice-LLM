@@ -1,0 +1,185 @@
+* =============================================================================
+* ==                                                                         ==
+* ==      KNICKEBEIN_APM1.cir — Symulacja Systemu Nawigacyjnego Knickebein     ==
+* ==                                                                         ==
+* =============================================================================
+*
+*
+* AUTOR ORYGINAŁU: Dariusz Domal
+*
+*
+* -----------------------------------------------------------------------------
+* == OGÓLNA ZASADA DZIAŁANIA SYMULACJI
+* -----------------------------------------------------------------------------
+*
+* Ta symulacja odtwarza doświadczenie audio operatora w niemieckim bombowcu
+* korzystającym z systemu nawigacyjnego Knickebein. System ten składał się z
+* dwóch przecinających się wiązek radiowych typu Lorenza:
+*
+*   1. WIĄZKA PROWADZĄCA (Beam A): Wiązka, wzdłuż której bombowiec leciał
+*      przez większość trasy w kierunku celu.
+*   2. WIĄZKA POPRZECZNA (Beam B): Druga wiązka, która przecinała wiązkę
+*      prowadzącą dokładnie nad celem, dając sygnał do zrzutu bomb.
+*
+* Symulacja generuje 100-sekundowy scenariusz lotu, w którym bombowiec najpierw
+* podąża za wiązką A, a następnie wlatuje w wiązkę B. Wynikiem jest plik
+* stereo .wav, gdzie lewy kanał odpowiada wiązce A, a prawy wiązce B.
+*
+*
+* == SCHEMAT BLOKOWY CAŁEGO SYSTEMU
+*
+*
+*   +---------------------+      +---------------------+      V(sa) - Błąd kursu A
+*   |   BLOK 2:           |----->|   ŚCIEŻKA WIĄZKI A  |-----> Lewy kanał audio
+*   |   Scenariusze Lotu  |      |   (Modulator        |      V(acA)
+*   |   (Źródła PWL)      |      |    Lorenza)         |
+*   +---------------------+      +---------------------+
+*            |
+*            | V(sb) - Błąd kursu B
+*            |
+*            v
+*   +---------------------+      +---------------------+      V(acB) - Prawy kanał
+*   |   BLOK 1:           |----->|   ŚCIEŻKA WIĄZKI B  |-----> audio
+*   |   Generatory        |      |   (Modulator        |
+*   |   Sygnałów Bazowych |      |    Lorenza)         |
+*   +---------------------+      +---------------------+
+*     (Nośna, Kropki,
+*      Kreski)
+*
+* =============================================================================
+
+.include apm1_lib.txt
+
+* -----------------------------------------------------------------------------
+* == BLOK 1: GENERATORY SYGNAŁÓW BAZOWYCH
+* -----------------------------------------------------------------------------
+*
+* W tym bloku generujemy sygnały wspólne dla obu wiązek:
+* 1. Nośna audio (czysty ton sinusoidalny).
+* 2. Sygnały bramkujące "kropki" i "kreski" o komplementarnym timingu,
+*    charakterystycznym dla systemu Lorenza.
+*
+* == SCHEMAT BLOKU GENERATORÓW
+*
+*   +-----------------+
+*   | V_CAR (SINE)    | ----> V(carr) - Nośna audio 440 Hz
+*   +-----------------+
+*
+*   +-----------------+
+*   | V_DOT (PULSE)   | ----> V(ctrl_dot) - Rytm kropek (0V lub VL)
+*   +-----------------+
+*            |
+*            |         +---------------------+
+*            +-------->| B_DASH              |
+*                      | VL - V(ctrl_dot)    | ----> V(ctrl_dash) - Rytm kresek
+*                      +---------------------+
+*
+.param VL=10
+.param F0=440
+.param Tdot=100m
+.param Tcycle=600m
+
+* Nośna audio (zakres maszynowy ±VL)
+V_CAR carr 0 SINE(0 {VL} {F0})
+
+* Sygnały bramkujące "kropki" / "kreski" wspólne dla obu wiązek
+V_DOT  ctrl_dot  0  PULSE(0 {VL} 0 1m 1m {Tdot} {Tcycle})
+B_DASH ctrl_dash 0  V={ VL - V(ctrl_dot) }
+
+* -----------------------------------------------------------------------------
+* == BLOK 2: SCENARIUSZE LOTU (BŁĘDY KURSU)
+* -----------------------------------------------------------------------------
+*
+* Dwa niezależne źródła PWL definiują błąd kursu samolotu względem każdej
+* z wiązek w czasie. Skala [0,1]: 0=strona kropek, 0.5=oś, 1=strona kresek.
+*
+* V_SA: Błąd względem wiązki prowadzącej A. Pilot aktywnie koryguje kurs.
+V_SA sa 0 PWL( 0 0.5   20 0.5   40 0.2   60 0.8   80 0.5   100 0.5 )
+
+* V_SB: Błąd względem wiązki poprzecznej B. Samolot wlatuje w nią ok. 60s.
+V_SB sb 0 PWL( 0 0.0   20 0.0   40 0.2   60 0.5   80 0.5   100 0.8 )
+
+* -----------------------------------------------------------------------------
+* == BLOK 3: ŚCIEŻKA PRZETWARZANIA WIĄZKI A (PROWADZĄCA)
+* -----------------------------------------------------------------------------
+*
+* Kompletny modulator Lorenza dla wiązki A.
+*
+* == SCHEMAT BLOKU PRZETWARZANIA (przykład dla kanału kropek w wiązce A)
+*
+*   V(carr) ---->+-------------+      +--------------+      +-------------+
+*                | XMUL_GDOT_A |----->| V(carr_dotA) |----->| XMUL_WDOT_A |----> V(dotA)
+*   V(ctrl_dot)->| (bramka)    |      +--------------+      | (waga)      |
+*                +-------------+                          +-------------+
+*                                                               ^
+*                                                               |
+*   V(sa) --> B_WDOTA --> V(wdotA) -----------------------------+
+*
+* 1. Bramkowanie nośnej sygnałami kropek/kresek.
+* 2. Obliczenie wag na podstawie błędu kursu V(sa).
+* 3. Zważenie (skalowanie amplitudy) bramkowanych sygnałów.
+* 4. Zsumowanie obu kanałów i sprzężenie AC do wyjścia.
+*
+* Krok 1: Bramkowanie nośnej
+XMUL_GDOT_A   carr_dotA  carr  ctrl_dot   0  MUL PARAMS: VL={VL}
+XMUL_GDASH_A  carr_dashA carr  ctrl_dash  0  MUL PARAMS: VL={VL}
+
+* Krok 2: Obliczenie wag na podstawie błędu kursu V(sa)
+B_WDOTA  wdotA  0  V={ (1 - V(sa))*VL }
+B_WDASHA wdashA 0  V={ V(sa)*VL }
+
+* Krok 3: Zastosowanie wag do ścieżek kropek/kresek
+XMUL_WDOT_A   dotA  carr_dotA  wdotA   0  MUL PARAMS: VL={VL}
+XMUL_WDASH_A  dashA carr_dashA wdashA  0  MUL PARAMS: VL={VL}
+
+* Krok 4: Suma i wyjście audio dla wiązki A
+XSUM_A  beamA  dotA  dashA  0  SUM PARAMS: Ku=1 Kd=1
+C_ACA  beamA  acA  10u
+R_ACA  acA    0    600
+
+* -----------------------------------------------------------------------------
+* == BLOK 4: ŚCIEŻKA PRZETWARZANIA WIĄZKI B (POPRZECZNA)
+* -----------------------------------------------------------------------------
+*
+* Identyczna struktura jak dla wiązki A, ale sterowana przez błąd kursu V(sb).
+*
+XMUL_GDOT_B   carr_dotB  carr  ctrl_dot   0  MUL PARAMS: VL={VL}
+XMUL_GDASH_B  carr_dashB carr  ctrl_dash  0  MUL PARAMS: VL={VL}
+
+B_WDOTB  wdotB  0  V={ (1 - V(sb))*VL }
+B_WDASHB wdashB 0  V={ V(sb)*VL }
+
+XMUL_WDOT_B   dotB  carr_dotB  wdotB   0  MUL PARAMS: VL={VL}
+XMUL_WDASH_B  dashB carr_dashB wdashB  0  MUL PARAMS: VL={VL}
+
+XSUM_B  beamB  dotB  dashB  0  SUM PARAMS: Ku=1 Kd=1
+C_ACB  beamB  acB  10u
+R_ACB  acB    0    600
+
+* -----------------------------------------------------------------------------
+* == BLOK 5: WYJŚCIE I STEROWANIE SYMULACJĄ
+* -----------------------------------------------------------------------------
+*
+* W tym bloku sumujemy oba sygnały (dla ewentualnego odsłuchu mono)
+* i definiujemy parametry symulacji oraz generowanie pliku .wav.
+*
+* == SCHEMAT BLOKU WYJŚCIA
+*
+*   V(acA) ----> +-----------+
+*                | XSUM_AB   | ----> V(ac_mix) - Sygnał mono (nieużywany w .wav)
+*   V(acB) ----> | (suma)    |
+*                +-----------+
+*
+*   V(acA) ---------------------> Lewy kanał .wav
+*   V(acB) ---------------------> Prawy kanał .wav
+*
+* Połączony sygnał audio (suma obu wiązek) – to, co słyszał operator
+XSUM_AB ac_mix acA acB 0 SUM PARAMS: Ku=0.5 Kd=0.5
+
+.options plotwinsize=0 method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9
+.tran 0 100 0 1m
+
+* Generowanie pliku stereo .wav: lewy kanał = wiązka A, prawy kanał = wiązka B
+.wave KNICKEBEIN_APM1.wav 16 44.1k V(acA) V(acB)
+
+.end
