@@ -1,0 +1,250 @@
+* =============================================================================
+* ==                                                                         ==
+* ==      APM1_GEE_DEMO.cir — Symulacja Systemu Nawigacyjnego Gee              ==
+* ==                                                                         ==
+* =============================================================================
+*
+* WERSJA: 2.0 (z rozszerzoną dokumentacją i schematami ASCII)
+* AUTOR ORYGINAŁU: Użytkownik
+* DOKUMENTACJA: Model AI
+*
+* -----------------------------------------------------------------------------
+* == OGÓLNA ZASADA DZIAŁANIA SYMULACJI
+* -----------------------------------------------------------------------------
+*
+* Ta symulacja modeluje lot samolotu w polu nawigacyjnym historycznego,
+* hiperbolicznego systemu Gee. Zamiast budować fizyczny model propagacji fal,
+* symulacja realizuje w czasie rzeczywistym obliczenia matematyczne, które
+* wykonywałby odbiornik Gee na pokładzie samolotu.
+*
+* Cały proces jest podzielony na logiczne bloki obliczeniowe, które naśladują
+* architekturę komputera analogowego.
+*
+*
+* == SCHEMAT BLOKOWY CAŁEGO SYSTEMU
+*
+*
+*   +---------------------+      +---------------------+
+*   |   BLOK 1:           |      |   BLOK 2:           |      V(x), V(y)
+*   |   Parametry i       |----->|   Kinematyka        |-----> Pozycja samolotu
+*   |   Warunki Początkowe|      |   (Integratory)     |      w skali maszynowej
+*   +---------------------+      +---------------------+
+*                                          |
+*                                          |
+*   +---------------------+      +---------------------+      V(dMB), V(dMC)
+*   |   BLOK 4:           |      |   BLOK 3:           |      Różnice dróg
+*   |   Kanały Gee        |<-----|   Obliczanie        |<----- (w jednostkach Gee)
+*   |   (Odejmowanie)     |      |   Odległości        |
+*   +---------------------+      +---------------------+
+*            |
+*            |
+*   +---------------------+      V(tMB), V(tMC)
+*   |   BLOK 5:           |      Różnice czasu
+*   |   Konwersja na      |-----> (w mikrosekundach)
+*   |   Jednostki Fizyczne|
+*   +---------------------+
+*
+* =============================================================================
+
+.include apm1_lib.txt
+
+* -----------------------------------------------------------------------------
+* == BLOK 1: PARAMETRY GLOBALNE I SKALOWANIE
+* -----------------------------------------------------------------------------
+*
+* Komputery analogowe operują na napięciach w ograniczonym zakresie (np. +/-10V).
+* Aby symulować wielkości fizyczne (jak kilometry czy sekundy), musimy je
+* przeskalować do "świata" napięć maszynowych.
+*
+*
+.param VL      = 10            ; Napięcie maszynowe APM-1
+.param Xscale  = 20            ; [km/V] Skala przestrzenna. 1V w symulacji = 20 km w rzeczywistości.
+.param Tscale  = 100           ; [s rzeczywiste / s symulacji] Skala czasowa. 1s symulacji = 100s lotu.
+.param c_km_s  = 299792.458    ; Prędkość światła [km/s]
+
+* Jednostka Gee: 1 jednostka Gee odpowiada różnicy dróg 20 km.
+* Dzięki sprytnemu wyborowi Xscale=20, 1V różnicy napięć w symulacji
+* będzie bezpośrednio odpowiadać 1 jednostce Gee.
+.param GEE_d_km  = 20          ; Różnica drogi [km] dla 1 jednostki Gee
+.param GEE_T_us  = 66.6        ; Różnica czasu [µs] dla 1 jednostki Gee (przybliżenie)
+
+* ------------------ Geometria łańcucha Gee ----------------------
+* Definiujemy pozycje stacji w kilometrach, a następnie automatycznie
+* przeliczamy je na napięcia maszynowe za pomocą Xscale.
+*
+*   Stacje w układzie współrzędnych [km]:
+*     Master A    : (-100, 0)
+*     Slave  B    : (+100, 0)
+*     Slave  C    : ( 0, +200)
+*
+.param D_MB_km = 200           ; Baza A–B [km]
+.param D_MC_km = 200           ; Odległość A–C [km]
+
+.param xA = { -D_MB_km/2/Xscale }   ; = -5 V  (-100 km)
+.param yA = 0
+.param xB = {  D_MB_km/2/Xscale }   ; = +5 V  (+100 km)
+.param yB = 0
+.param xC = 0
+.param yC = { D_MC_km/Xscale }      ; = +10 V (+200 km)
+
+* -----------------------------------------------------------------------------
+* == BLOK 2: KINEMATYKA SAMOLOTU
+* -----------------------------------------------------------------------------
+*
+* Modelujemy ruch samolotu jako całkowanie jego wektora prędkości w czasie.
+* Pozycja =  Prędkość dt.
+* Używamy do tego integratorów z biblioteki APM-1.
+*
+* == SCHEMAT BLOKU KINEMATYKI
+*
+*   Napięcie stałe V(vx) ----> +----------+
+*   (prędkość w osi X)        | XINT_X   |
+*                             |  K*u dt | ----> V(x) - Pozycja X w skali maszynowej
+*                             +----------+
+*                               IC = x0
+*
+*   Napięcie stałe V(vy) ----> +----------+
+*   (prędkość w osi Y)        | XINT_Y   |
+*                             |  K*u dt | ----> V(y) - Pozycja Y w skali maszynowej
+*                             +----------+
+*                               IC = y0
+*
+.param V_kmh    = 400          ; Prędkość przelotowa [km/h]
+.param Vx_frac  = 0.7          ; Składowa X prędkości (cosinus kąta kursu)
+.param Vy_frac  = 0.3          ; Składowa Y prędkości (sinus kąta kursu)
+
+.param Vx_phys  = { V_kmh/3600*Vx_frac } ; Prędkość fizyczna [km/s]
+.param Vy_phys  = { V_kmh/3600*Vy_frac } ; Prędkość fizyczna [km/s]
+
+* Przeliczenie prędkości fizycznej na prędkość maszynową [V/s symulacji]
+* V_sim [V/s] = V_phys [km/s] * Tscale [s_phys/s_sim] / Xscale [km/V]
+.param vx_sim   = { Vx_phys*Tscale/Xscale }
+.param vy_sim   = { Vy_phys*Tscale/Xscale }
+
+* Warunki początkowe samolotu (w skali maszynowej):
+.param x0 = -4                  ; -4 V  => -80 km
+.param y0 = -3                  ; -3 V  => -60 km
+
+* Źródła napięć stałych reprezentujące prędkości maszynowe
+Vvx vx 0 DC {vx_sim}
+Vvy vy 0 DC {vy_sim}
+
+* Integratory APM-1 (INTpinv) realizują X(t), Y(t)
+XINT_X x vx 0 INTpinv IC={x0} K=1 leak=0
+XINT_Y y vy 0 INTpinv IC={y0} K=1 leak=0
+
+* -----------------------------------------------------------------------------
+* == BLOK 3: ODLEGŁOŚCI DO STACJI GEE
+* -----------------------------------------------------------------------------
+*
+* W tym bloku, dla każdej stacji (A, B, C), obliczamy w czasie rzeczywistym
+* odległość samolotu od niej, używając twierdzenia Pitagorasa.
+* r = sqrt( (x_plane - x_station)^2 + (y_plane - y_station)^2 )
+*
+* == SCHEMAT BLOKU OBLICZANIA ODLEGŁOŚCI (przykład dla stacji A)
+*
+*   V(x) ---->
+*            +-----------------------------------+
+*   V(y) ---->| B_rA                              |
+*            | sqrt( (V(x)-xA)² + (V(y)-yA)² )   | ----> V(rA) - Odległość do A
+*   xA   ---->|                                   |       w skali maszynowej
+*            +-----------------------------------+
+*   yA   ---->
+*
+*
+* rA, rB, rC — odległości samolotu od stacji A,B,C (w skali maszynowej [V]).
+B_rA rA 0 V = { sqrt( (V(x)-{xA})**2 + (V(y)-{yA})**2 ) }
+B_rB rB 0 V = { sqrt( (V(x)-{xB})**2 + (V(y)-{yB})**2 ) }
+B_rC rC 0 V = { sqrt( (V(x)-{xC})**2 + (V(y)-{yC})**2 ) }
+
+R_rA rA 0 1G
+R_rB rB 0 1G
+R_rC rC 0 1G
+
+* -----------------------------------------------------------------------------
+* == BLOK 4: KANAŁY GEE - RÓŻNICE DRÓG
+* -----------------------------------------------------------------------------
+*
+* To jest serce systemu Gee. Obliczamy różnicę dróg (a więc i odległości)
+* od samolotu do pary stacji Master-Slave.
+* Δr_MB = rB - rA
+*
+* == SCHEMAT BLOKU RÓŻNICY DRÓG (przykład dla pary Master-B)
+*
+*   V(rB) ----> +---------+
+*               | B_dMB   |
+*               | V(rB) - | ----> V(dMB) - Różnica dróg w jednostkach Gee
+*               | V(rA)   |
+*   V(rA) ----> +---------+
+*
+*
+* Δr_MB = rB - rA    (łańcuch Master–B)
+* Δr_MC = rC - rA    (łańcuch Master–C)
+B_dMB dMB 0 V = { V(rB) - V(rA) }
+B_dMC dMC 0 V = { V(rC) - V(rA) }
+
+R_dMB dMB 0 1G
+R_dMC dMC 0 1G
+
+* -----------------------------------------------------------------------------
+* == BLOK 5: KONWERSJA NA JEDNOSTKI FIZYCZNE (CZAS)
+* -----------------------------------------------------------------------------
+*
+* Przeliczamy różnice dróg (w woltach/jednostkach Gee) na różnice czasu
+* w mikrosekundach, które nawigator widziałby na ekranie oscyloskopu.
+* Δt[µs] = (Δr_mach[V] * Xscale[km/V]) / c[km/s] * 1e6[µs/s]
+*
+* == SCHEMAT BLOKU KONWERSJI
+*
+*             +-----------------------------------------+
+*   V(dMB) -->| B_tMB                                   |--> V(tMB) [µs]
+*             | V(dMB) * Xscale / c_km_s * 1e6          |
+*             +-----------------------------------------+
+*
+*             +-----------------------------------------+
+*   V(tMB) -->| B_uMB                                   |--> V(uMB) ["Liczba Gee"]
+*             | V(tMB) / GEE_T_us                       |
+*             +-----------------------------------------+
+*
+B_tMB tMB 0 V = { (V(dMB)*Xscale/{c_km_s})*1e6 }  ; [µs]
+B_tMC tMC 0 V = { (V(dMC)*Xscale/{c_km_s})*1e6 }  ; [µs]
+
+R_tMB tMB 0 1G
+R_tMC tMC 0 1G
+
+* Rzut na „liczby Gee”: Δt / 66.6 µs
+B_uMB uMB 0 V = { V(tMB)/{GEE_T_us} }
+B_uMC uMC 0 V = { V(tMC)/{GEE_T_us} }
+
+R_uMB uMB 0 1G
+R_uMC uMC 0 1G
+
+* -----------------------------------------------------------------------------
+* == BLOK 6: STEROWANIE SYMULACJĄ I WYNIKI
+* -----------------------------------------------------------------------------
+.param T_end   = 2           ; Czas symulacji [s] (odpowiada 200s lotu)
+.param maxstep = {T_end/2000}
+
+.options plotwinsize=0 method=gear maxord=2 trtol=5 reltol=1e-6
+.options abstol=1e-9 vntol=1e-9
+
+.tran 0 {T_end} 0 {maxstep}
+
+* --- Zapisywane przebiegi do analizy ---
+* Trajektoria:
+*   Aby zobaczyć trajektorię, po symulacji wykreśl V(y) i zmień oś X na V(x).
+* Kanały Gee:
+*   V(dMB), V(dMC) – różnice dróg (w woltach, co odpowiada jednostkom Gee)
+*   V(tMB), V(tMC) – różnice czasów [µs]
+*   V(uMB), V(uMC) – liczby Gee (wartości bezwymiarowe)
+
+*=== RESULTS_BEGIN ===
+.meas tran x_final  AVG V(x)   FROM={0.9*T_end} TO={T_end}
+.meas tran y_final  AVG V(y)   FROM={0.9*T_end} TO={T_end}
+.meas tran dMB_end  AVG V(dMB) FROM={0.9*T_end} TO={T_end}
+.meas tran dMC_end  AVG V(dMC) FROM={0.9*T_end} TO={T_end}
+.meas tran tMB_end  AVG V(tMB) FROM={0.9*T_end} TO={T_end}
+.meas tran tMC_end  AVG V(tMC) FROM={0.9*T_end} TO={T_end}
+*=== RESULTS_END ===
+
+.end
