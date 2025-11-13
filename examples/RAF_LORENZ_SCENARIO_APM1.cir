@@ -1,0 +1,195 @@
+* =============================================================================
+* ==                                                                         ==
+* ==      RAF_LORENZ_SCENARIO_APM1.cir — Scenariusz Nawigacji Wiązkowej      ==
+* ==                                                                         ==
+* =============================================================================
+*
+* WERSJA: 2.1 (z rozszerzoną dokumentacją i schematami ASCII)
+* AUTOR ORYGINAŁU: Użytkownik
+* DOKUMENTACJA: Model AI
+*
+* -----------------------------------------------------------------------------
+* == OGÓLNA ZASADA DZIAŁANIA SYMULACJI
+* -----------------------------------------------------------------------------
+*
+* Ta symulacja generuje 60-sekundowy sygnał audio, który odtwarza doświadczenie
+* pilota RAF nawigującego wzdłuż wiązki radiowej systemu Lorenza / SBA
+* (Standard Beam Approach).
+*
+* Symulacja jest w pętli otwartej - trajektoria lotu (a konkretnie błąd kursu)
+* jest z góry zdefiniowana za pomocą źródła PWL (Piecewise Linear), co tworzy
+* dynamiczny scenariusz lotu: start na kursie, zboczenie, gwałtowna korekta,
+* przeregulowanie i ponowne wejście na kurs.
+*
+* Kluczowym elementem jest wierne odtworzenie komplementarnego timingu sygnałów
+* "kropek" i "kresek", co w strefie ekwisygnałowej (na kursie) skutkuje
+* słyszalnym, ciągłym tonem.
+*
+*
+* == SCHEMAT BLOKOWY CAŁEGO SYSTEMU
+*
+*
+*   +---------------------+      +---------------------+      V(s)
+*   |   BLOK 2:           |      |   BLOK 3:           |      Wagi (w_dot, w_dash)
+*   |   Scenariusz Lotu   |----->|   Obliczanie Wag    |-----> dla kanałów
+*   |   (Źródło PWL)      |      |   (Crossfader)      |
+*   +---------------------+      +---------------------+
+*            ^                             |
+*            |                             |
+*   +---------------------+      +---------------------+      V(y_dot), V(y_dash)
+*   |   BLOK 1:           |      |   BLOK 4:           |      Zważone sygnały
+*   |   Generatory        |----->|   Modulacja i       |<----- audio
+*   |   Sygnałów Bazowych |      |   Mieszanie         |
+*   +---------------------+      +---------------------+
+*     (Nośna, Kropki,                               |
+*      Kreski)                                     |
+*                                          +---------------------+
+*                                          |   BLOK 5:           |      V(acout)
+*                                          |   Wyjście Audio     |-----> Sygnał do
+*                                          |   (Suma i Filtr AC) |      słuchawek
+*                                          +---------------------+
+*
+* =============================================================================
+
+.include ..\apm1_lib.txt
+
+* -----------------------------------------------------------------------------
+* == BLOK 1: GENERATORY SYGNAŁÓW BAZOWYCH
+* -----------------------------------------------------------------------------
+*
+* W tym bloku generujemy podstawowe "składniki" naszego sygnału:
+* 1. Nośna audio (czysty ton sinusoidalny).
+* 2. Sygnał bramkujący "kropki" (rytm litery 'E' w Morse'ie).
+* 3. Sygnał bramkujący "kreski", który jest idealnym dopełnieniem sygnału kropek.
+*
+* == SCHEMAT BLOKU GENERATORÓW
+*
+*   +-----------------+
+*   | V1 (SINE)       | ----> V(sin) - Nośna audio 440 Hz
+*   +-----------------+
+*
+*   +-----------------+
+*   | V_DOT (PULSE)   | ----> V(ctrl_dot) - Rytm kropek (0V lub VDD)
+*   +-----------------+
+*            |
+*            |         +---------------------+
+*            +-------->| B_DASH              |
+*                      | VDD - V(ctrl_dot)   | ----> V(ctrl_dash) - Rytm kresek
+*                      +---------------------+
+*
+.param VL=10
+.param VDD=10
+.param F0=440
+.param Tdot=100m
+.param Tcycle=600m
+
+* Nośna audio (zakres maszynowy ±VL)
+V1 sin 0 SINE(0 {VL} {F0})
+
+* Sygnały bramkujące (0 lub VDD) - TIMING KOMPLEMENTARNY (LORENZ/SBA)
+* 1. Generujemy rytm "kropek"
+V_DOT  ctrl_dot  0  PULSE(0 {VDD} 0 1m 1m {Tdot}  {Tcycle})
+* 2. Generujemy rytm "kresek" jako idealne dopełnienie kropek
+B_DASH ctrl_dash 0  V = {VDD} - V(ctrl_dot)
+
+* -----------------------------------------------------------------------------
+* == BLOK 2: SCENARIUSZ LOTU (BŁĄD KURSU)
+* -----------------------------------------------------------------------------
+*
+* Źródło napięciowe PWL (Piecewise Linear) definiuje z góry zaprogramowany
+* błąd kursu s(t) w czasie. Napięcie V(s) reprezentuje pozycję samolotu
+* w wiązce w znormalizowanej skali od 0.0 do 1.0.
+*
+*   s = 0.0 : Maksymalnie po stronie "kropek"
+*   s = 0.5 : Idealnie na kursie (w osi wiązki)
+*   s = 1.0 : Maksymalnie po stronie "kresek"
+*
+V_S s 0 PWL( 0 0.5  5 0.5  15 1.0  30 0.1  45 0.55  60 0.8 )
+
+* -----------------------------------------------------------------------------
+* == BLOK 3: OBLICZANIE WAG (CROSSFADER)
+* -----------------------------------------------------------------------------
+*
+* Na podstawie błędu kursu V(s) obliczamy wagi (wzmocnienia) dla kanału
+* kropek i kresek. Jest to klasyczny crossfader liniowy.
+*
+* == SCHEMAT BLOKU OBLICZANIA WAG
+*
+*                      +---------------------+
+*             +------->| B_WDOT              | ----> V(wdot) - Waga kanału kropek
+*             |        | 1 - V(s)            |
+*   V(s) -----+        +---------------------+
+*             |
+*             +------->+---------------------+
+*                      | B_WDASH             | ----> V(wdash) - Waga kanału kresek
+*                      | V(s)                |
+*                      +---------------------+
+*
+* Wagi z błędu kursu: w_dot = 1-s, w_dash = s (zakres 0..1)
+B_WDOT  wdot  0 V={ 1 - V(s) }
+B_WDASH wdash 0 V={ V(s) }
+
+* -----------------------------------------------------------------------------
+* == BLOK 4: MODULACJA I MIESZANIE
+* -----------------------------------------------------------------------------
+*
+* To jest główny blok przetwarzania sygnału. Realizujemy tu dwustopniową
+* modulację amplitudy, używając mnożników z biblioteki APM-1.
+*
+* == SCHEMAT BLOKU MODULACJI (przykład dla kanału kropek)
+*
+*   V(sin) ---->+-----------+      +------------+      +-----------+
+*               | XMUL_GDOT |----->| V(sin_dot) |----->| XMUL_WDOT |----> V(y_dot)
+*   V(gdot) --->| (bramka)  |      +------------+      | (waga)    |
+*               +-----------+                        +-----------+
+*                                                          ^
+*                                                          |
+*                                                    V(wdot) --+
+*
+* Krok 1: Bramkowanie. Nośna audio jest mnożona przez sygnał bramkujący.
+* Krok 2: Ważenie. Bramkowany sygnał jest mnożony przez wagę z crossfadera.
+*
+* Normalizujemy sygnały bramkujące do zakresu [0,VL] dla mnożnika MUL
+B_GDOT  gdot  0 V={ V(ctrl_dot)/VDD*VL }
+B_GDASH gdash 0 V={ V(ctrl_dash)/VDD*VL }
+
+* Ścieżki sygnałowe wiązki z użyciem bloków APM-1
+* Krok 1: Mnożenie nośnej przez bramkę (włącz/wyłącz)
+XMUL_GDOT  sin_dot  sin   gdot  0 MUL PARAMS: VL={VL}
+XMUL_GDASH sin_dash sin   gdash 0 MUL PARAMS: VL={VL}
+
+* Krok 2: Skalowanie przez wagę (VL=1 sprawia, że out = in * waga)
+XMUL_WDOT  y_dot   sin_dot  wdot  0 MUL PARAMS: VL=1
+XMUL_WDASH y_dash  sin_dash wdash 0 MUL PARAMS: VL=1
+
+* -----------------------------------------------------------------------------
+* == BLOK 5: WYJŚCIE AUDIO (SUMA I FILTR AC)
+* -----------------------------------------------------------------------------
+*
+* Zważone sygnały kropek i kresek są sumowane, a następnie przepuszczane
+* przez prosty filtr górnoprzepustowy RC, który symuluje sprzężenie AC
+* w słuchawkach (usuwa składową stałą).
+*
+* == SCHEMAT BLOKU WYJŚCIA
+*
+*   V(y_dot) -->+----------+      +------------+   C_AC    R_AC
+*               | XSUM     |----->| V(ac_pre)  |---CCCC---RRRR---+---> V(acout)
+*   V(y_dash)-->| (suma)   |      +------------+          |      |
+*               +----------+                              GND    GND
+*
+* Suma wiązek
+XSUM  ac_pre  y_dot  y_dash  0 SUM PARAMS: Ku=1 Kd=1
+
+* Sprzężenie AC do "słuchawek"
+C_AC   ac_pre acout 10u
+R_AC   acout  0     600
+
+* -----------------------------------------------------------------------------
+* == BLOK 6: STEROWANIE SYMULACJĄ I GENEROWANIE PLIKU .WAV
+* -----------------------------------------------------------------------------
+.options plotwinsize=0 method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9
+.tran 0 60 0 1m
+
+.wave RAF_LORENZ_SCENARIO_APM1.wav 16 44.1k V(acout)
+
+.end
