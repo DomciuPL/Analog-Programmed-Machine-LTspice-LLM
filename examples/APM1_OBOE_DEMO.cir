@@ -1,0 +1,162 @@
+* =====================================================================
+* APM1_OBOE_DEMO.cir — Oboe (Cat–Mouse) single-arc bombing geometry
+* APM-1 analog computer model in LTspice
+* =====================================================================
+*
+* WPROWADZENIE
+* ---------------------------------------------------------------------
+* Ta netlista symuluje działanie brytyjskiego systemu nawigacji Oboe,
+* jednego z najdokładniejszych systemów bombardowania II WŚ. System
+* opierał się na dwóch stacjach naziemnych: "Cat" i "Mouse".
+*
+* ZASADA DZIAŁANIA
+* ---------------------------------------------------------------------
+* 1. Stacja "Cat" (Kot) utrzymywała samolot na idealnym łuku o stałym
+*    promieniu (R_CAT), który przechodził nad celem. Pilot słyszał
+*    sygnały korekcyjne, jeśli zboczył z kursu.
+* 2. Stacja "Mouse" (Mysz) stale mierzyła odległość do samolotu.
+*    Cel znajdował się w punkcie przecięcia łuku "Cat" z okręgiem
+*    o zadanym promieniu (R_MOUSE) wokół stacji "Mouse".
+* 3. Gdy "Mouse" wykryła, że samolot osiągnął wymaganą odległość,
+*    wysyłała sygnał do zrzutu bomb.
+*
+* MODEL SYMULACYJNY
+* ---------------------------------------------------------------------
+* - Symulacja odbywa się w płaszczyźnie 2D (x,y).
+* - Ruch samolotu jest modelowany jako idealny lot po okręgu "Cat"
+*   ze stałą prędkością kątową (omega). Zmienną napędzającą ruch
+*   jest kąt phi(t).
+* - Układ oblicza w czasie rzeczywistym położenie (x,y) samolotu
+*   oraz jego odległość od stacji "Mouse".
+* - Logika zrzutu jest aktywowana, gdy zmierzona odległość od "Mouse"
+*   osiągnie wartość docelową R_MOUSE.
+* - Parametr 'r_jam' pozwala symulować zakłócanie pomiaru odległości
+*   przez stację "Mouse", co prowadzi do przedwczesnego zrzutu.
+* =====================================================================
+
+.include apm1_lib.txt
+
+.param VL=10
+
+* ---------------------- Parametry geometrii i ruchu -------------------
+
+.param R_CAT   = 4      ; promień okręgu Cat  40 km
+.param D_CM    = 6      ; odległość Cat–Mouse  60 km
+.param R_MOUSE = 4      ; promień okręgu Mouse (promień zrzutu)
+
+* Parametry ruchu po łuku
+.param phi0  = -0.5     ; pozycja początkowa (rad), punkt przed celem
+.param omega = 0.04     ; dφ/dt [rad/s], prędkość kątowa
+
+* Kąt φ_T odpowiadający punktowi przecięcia okręgów Cat i Mouse:
+* Jest to analitycznie wyliczona, idealna pozycja kątowa celu.
+.param phi_T = { acos( (R_CAT*R_CAT + D_CM*D_CM - R_MOUSE*R_MOUSE) / (2*R_CAT*D_CM) ) }
+
+* Czas idealnego przejścia przez punkt celu (φ = φ_T)
+* Służy jako idealny punkt odniesienia do oceny błędu czasowego.
+.param t_ideal = { (phi_T - phi0)/omega }
+
+* Parametr zakłócenia pomiaru z Mouse (model „fałszywego zasięgu”)
+* r_jam > 0  samolot wydaje się dalej od Mouse niż w rzeczywistości,
+*             zrzut następuje za wcześnie.
+.param r_jam = 0
+*.step param r_jam list 0 0.2 0.4 0.6
+
+* Parametry analizy czasowej
+.param tstop   = 80
+.param maxstep = 0.01
+
+.options plotwinsize=0
+.options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9
+
+* ---------------------------------------------------------------------
+* Blok 1: Zmienna kątowa φ(t) — parametr ruchu po łuku
+* ---------------------------------------------------------------------
+* Integrator generuje liniowo narastający kąt phi(t), który jest
+* podstawowym "zegarem" ruchu samolotu po łuku.
+* dφ/dt = ω, φ(0) = phi0
+V_OMEGA vphi 0 DC {omega}
+XINT_PHI phi vphi 0 INTpinv IC={phi0} K=1 leak=0
+
+* ---------------------------------------------------------------------
+* Blok 2: Położenie samolotu w układzie (x,y) i odległości
+* ---------------------------------------------------------------------
+* Ten blok przelicza pozycję kątową phi(t) na współrzędne kartezjańskie
+* (x,y) za pomocą funkcji trygonometrycznych. Następnie, używając
+* twierdzenia Pitagorasa, oblicza odległości samolotu od obu stacji.
+*
+* x(t) = R_CAT · cos φ(t), y(t) = R_CAT · sin φ(t)
+B_X x 0 V = { R_CAT * cos(V(phi)) }
+R_X x 0 1G
+
+B_Y y 0 V = { R_CAT * sin(V(phi)) }
+R_Y y 0 1G
+
+* Odległość od Cat (powinna być stała i równa R_CAT)
+B_RCAT r_cat 0 V = { sqrt( V(x)*V(x) + V(y)*V(y) ) }
+R_RCAT r_cat 0 1G
+
+* Pozycja Mouse jako stały węzeł D_CM
+V_DCM dcm 0 DC {D_CM}
+
+* Odległość od Mouse (kluczowy sygnał dla zrzutu)
+B_RMOUSE r_mouse 0 V = { sqrt( (V(x)-V(dcm))*(V(x)-V(dcm)) + V(y)*V(y) ) }
+R_RMOUSE r_mouse 0 1G
+
+* ---------------------------------------------------------------------
+* Blok 3: Tor idealny (diagnostyczny) — kontrola zasięgu Cat
+* ---------------------------------------------------------------------
+* Ten blok sprawdza, czy model ruchu jest poprawny. Błąd 'e_cat'
+* powinien być bliski zeru przez całą symulację, co potwierdza,
+* że samolot leci po idealnym okręgu stacji Cat.
+*
+V_RCAT_REF rcat_ref 0 DC {R_CAT}
+XERR_CAT e_cat rcat_ref r_cat 0 SUM Ku=1 Kd=-1
+
+* ---------------------------------------------------------------------
+* Blok 4: Tor Oboe (Mouse) z zakłóceniem pomiaru
+* ---------------------------------------------------------------------
+* To jest logika decyzyjna stacji "Mouse".
+* 1. Do rzeczywistej odległości 'r_mouse' dodawany jest błąd 'r_jam',
+*    tworząc "zmierzoną" odległość 'rM_meas'.
+* 2. Obliczany jest błąd 'e_M' jako różnica między docelowym promieniem
+*    zrzutu R_MOUSE a zmierzoną odległością.
+* 3. Gdy błąd 'e_M' przechodzi przez zero, generowany jest impuls zrzutu.
+*
+* r_M_meas(t) = r_mouse(t) + r_jam
+B_RM_MEAS rM_meas 0 V = { V(r_mouse) + r_jam }
+R_RM_MEAS rM_meas 0 1G
+
+* e_M(t) = R_MOUSE  r_M_meas(t)
+V_RM_REF rm_ref 0 DC {R_MOUSE}
+XERR_M e_M rm_ref rM_meas 0 SUM Ku=1 Kd=-1
+
+* Komparator: flag_M = 1, gdy e_M > 0 (samolot „przed” promieniem Mouse)
+XCMP_M flag_M e_M 0 0 CMPad th=0
+
+* Detektor zbocza opadającego flag_M  impuls zrzutu wg Oboe
+XEDGE_M pulse_M flag_M 0 EDGE_F Td=0.02
+
+* ---------------------------------------------------------------------
+* Analiza czasowa
+* ---------------------------------------------------------------------
+.tran 0 {tstop} 0 {maxstep}
+
+* ---------------------------------------------------------------------
+* Pomiary i interpretacja wyników
+* ---------------------------------------------------------------------
+*=== RESULTS_BEGIN ===
+
+* Czas zrzutu wg Oboe (Mouse)
+.meas tran t_drop WHEN V(pulse_M)=0.5 RISE=1
+
+* Błąd czasowy względem idealnego przejścia przez punkt celu (φ = φ_T)
+.meas tran dT_err PARAM='( t_drop - {t_ideal} )'
+
+* Odległość od Cat i Mouse w chwili zrzutu (kontrola geometrii łuku)
+.meas tran rcat_drop   FIND V(r_cat)   WHEN V(pulse_M)=0.5 RISE=1
+.meas tran rmouse_drop FIND V(r_mouse) WHEN V(pulse_M)=0.5 RISE=1
+
+*=== RESULTS_END ===
+
+.end
