@@ -1,0 +1,194 @@
+* =====================================================================
+* X_GERAET_DEM.cir — X-Gerät beam bombing geometry on APM-1
+* =====================================================================
+*
+* WPROWADZENIE
+* ---------------------------------------------------------------------
+* Ta netlista symuluje działanie historycznego niemieckiego systemu
+* nawigacji radiowej X-Gerät, używanego przez Luftwaffe podczas
+* Bitwy o Anglię (1940). System ten umożliwiał precyzyjne bombardowanie
+* nocne lub w warunkach słabej widoczności.
+*
+* ZASADA DZIAŁANIA
+* ---------------------------------------------------------------------
+* Bombowiec leciał wzdłuż głównej wiązki prowadzącej ("Weser"), która
+* wskazywała kierunek na cel. Trasę przecinały trzy wiązki poprzeczne:
+* 1. Rhine (Rhein) - sygnał ostrzegawczy, ok. 30 km przed celem.
+* 2. Oder (Odra)   - początek pomiaru czasu, ok. 10 km przed celem.
+* 3. Elbe (Łaba)   - koniec pomiaru czasu, ok. 5 km przed celem.
+*
+* Kluczowa idea polegała na tym, że odległość między wiązkami Oder i Elbe
+* (5 km) była identyczna jak odległość od wiązki Elbe do punktu zrzutu.
+* Pokładowy "zegar" (komputer analogowy) mierzył czas przelotu (Δt)
+* między Oder a Elbe. Następnie, po minięciu Elbe, odliczał dokładnie
+* ten sam czas Δt, po którym następował automatyczny zrzut bomb.
+* Metoda ta była skuteczna, ponieważ nie wymagała znajomości prędkości
+* samolotu względem ziemi – system sam ją mierzył i ekstrapolował.
+*
+* MODEL SYMULACYJNY
+* ---------------------------------------------------------------------
+* Symulacja przedstawia jednowymiarowy model przelotu wzdłuż wiązki
+* Weser. Złożoność nawigacji w 2D/3D jest pominięta na rzecz klarownego
+* przedstawienia logiki czasowej systemu.
+*
+* Skala:
+*   - r(t) [V] reprezentuje odległość do punktu zrzutu [km]
+*     w przeskalowaniu 1 V = 10 km (VL=10 V).
+*   - Początkowo r(0) = 4 V = 40 km przed punktem zrzutu.
+*   - Progi wiązek:
+*       Rhine: r_R = 3 V    30 km przed zrzutem
+*       Oder:  r_O = 1 V    10 km przed zrzutem
+*       Elbe:  r_E = 0.5 V   5 km przed zrzutem
+*   - Stała prędkość zbliżania: dr/dt = -0.1 V/s
+*       1 V zmiany r -> 10 km, 0.1 V/s -> 1 km/s,
+*       co daje przelot 40 km do celu w 40 sekund.
+* =====================================================================
+
+.include apm1_lib.txt
+
+.param VL=10
+
+* Geometria wiązek X-Gerät w skali napięciowej
+.param r0   = 4
+.param r_R  = 3
+.param r_O  = 1
+.param r_E  = 0.5
+
+* Prędkość zbliżania (ujemna zmiana r w czasie)
+.param v_r  = -0.1
+
+* Parametry analizy czasowej
+.param tstop   = 50
+.param maxstep = 0.01
+
+.options plotwinsize=0
+.options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9
+
+* ---------------------------------------------------------------------
+* Blok 1: Czas maszynowy
+* ---------------------------------------------------------------------
+* Ten blok generuje sygnał napięciowy V(t), który jest równy
+* bieżącemu czasowi symulacji. Jest to niezależna zmienna (oś X)
+* dla całego "komputera analogowego".
+*
+B_TIME t 0 V = time
+R_TIME t 0 1G
+
+* ---------------------------------------------------------------------
+* Blok 2: Integrator zbliżania do celu — r(t)
+* ---------------------------------------------------------------------
+* Ten blok symuluje ruch samolotu.
+* V_VEL to stałe napięcie reprezentujące prędkość zbliżania.
+* XINT_R to integrator, który całkuje prędkość w czasie, dając pozycję r(t).
+* Warunek początkowy IC={r0} ustawia samolot w odległości 40 km od celu.
+* W miarę upływu czasu, napięcie r(t) liniowo maleje od 4V do 0V.
+* XGAIN_RKM przeskalowuje napięcie r(t) na rzeczywistą odległość w km.
+*
+V_VEL vvel 0 DC {v_r}
+XINT_R r vvel 0 INTpinv IC={r0} K=1 leak=0
+
+* Odległość w kilometrach
+XGAIN_RKM r_km r 0 GAIN K=10
+
+* ---------------------------------------------------------------------
+* Blok 3: Komparatory progów wiązek Rhine, Oder, Elbe
+* ---------------------------------------------------------------------
+* Te bloki działają jak detektory, sprawdzające, czy samolot minął
+* już daną wiązkę. Każdy komparator porównuje aktualną pozycję r(t)
+* z progiem danej wiązki (np. r_R = 3V).
+* Wyjście (np. flag_R) ma stan wysoki (1V), gdy samolot jest PRZED
+* wiązką (r > próg), i stan niski (0V), gdy jest ZA wiązką (r < próg).
+*
+* CMPad: out = 1, gdy r > próg, w przeciwnym razie 0.
+XCMP_R flag_R r 0 0 CMPad th={r_R}
+XCMP_O flag_O r 0 0 CMPad th={r_O}
+XCMP_E flag_E r 0 0 CMPad th={r_E}
+
+* ---------------------------------------------------------------------
+* Blok 4: Detektory zboczy — impulsy przy przecięciu wiązek
+* ---------------------------------------------------------------------
+* Komparatory z Bloku 3 generują zmianę stanu (z 1 na 0).
+* Te bloki (detektory zbocza opadającego) przekształcają tę zmianę
+* w krótki, ostry impuls. Impuls ten symbolizuje sygnał dźwiękowy
+* lub elektryczny, który uruchamia kolejne elementy logiki zegara.
+*
+XEDR_R pulse_R flag_R 0 EDGE_F Td=0.02
+XEDR_O pulse_O flag_O 0 EDGE_F Td=0.02
+XEDR_E pulse_E flag_E 0 EDGE_F Td=0.02
+
+* ---------------------------------------------------------------------
+* Blok 5: Rejestracja czasów t_O i t_E (Sample & Hold)
+* ---------------------------------------------------------------------
+* To jest analogowa pamięć systemu. Układy Sample & Hold (S&H)
+* "zapamiętują" wartość napięcia na wejściu w momencie otrzymania
+* impulsu sterującego.
+* - XSH_O na wejściu ma sygnał czasu 't'. Czeka na impuls 'pulse_O'.
+*   Gdy go otrzyma, zapamiętuje czas minięcia wiązki Oder jako napięcie tO.
+* - XSH_E działa analogicznie dla wiązki Elbe, zapamiętując czas tE.
+*
+* Duża pojemność Ch oraz mały Ron zapewniają szybkie próbkowanie
+* i bardzo wolny wyciek (τ_leak  1e7 s).
+XSH_O tO t pulse_O 0 S_H Ron=0.01 Ch=10m
+XSH_E tE t pulse_E 0 S_H Ron=0.01 Ch=10m
+
+* ---------------------------------------------------------------------
+* Blok 6: Zegar X-Gerät — Δt oraz odliczanie do zrzutu
+* ---------------------------------------------------------------------
+* To jest serce komputera celowniczego. Wykonuje on proste operacje
+* arytmetyczne na zapamiętanych i bieżących sygnałach czasowych.
+*
+* 1. Obliczenie interwału pomiarowego:
+*    Δt = t_E - t_O (czas przelotu między wiązkami Oder i Elbe)
+XDT  dT   tE   tO   0 SUM Ku=1 Kd=-1
+
+* 2. Uruchomienie stopera odliczającego czas od ostatniej wiązki:
+*    τ_E(t) = t - t_E (czas, jaki upłynął od przecięcia Elbe)
+XTAU tauE t    tE   0 SUM Ku=1 Kd=-1
+
+* 3. Porównanie obu czasów (odliczanie do zrzutu):
+*    e_rel = dT - tauE (błąd odliczania; osiąga 0 w chwili zrzutu)
+XERR e_rel dT  tauE 0 SUM Ku=1 Kd=-1
+
+* 4. Detekcja momentu zrzutu:
+*    Gdy czas lotu od Elbe (tauE) zrówna się z czasem pomiarowym (dT),
+*    sygnał błędu 'e_rel' przechodzi przez zero.
+*    Komparator i detektor zbocza wykrywają ten moment i generują
+*    finalny impuls zrzutu bomb 'pulse_rel'.
+XCMP_REL flag_rel e_rel 0 0 CMPad th=0
+XEDG_REL pulse_rel flag_rel 0 EDGE_F Td=0.02
+
+* ---------------------------------------------------------------------
+* Analiza czasowa
+* ---------------------------------------------------------------------
+.tran 0 {tstop} 0 {maxstep}
+
+* ---------------------------------------------------------------------
+* Pomiary i zalecane przebiegi
+* ---------------------------------------------------------------------
+* Instrukcje .meas automatycznie obliczają kluczowe parametry po
+* zakończeniu symulacji, co pozwala na weryfikację poprawności działania.
+* - t_Rhine, t_Oder, t_Elbe, t_rel: dokładne czasy zdarzeń.
+* - dT_OE: zmierzony czas przelotu między Oder i Elbe.
+* - dT_ER: zmierzony czas przelotu od Elbe do punktu zrzutu.
+* Zgodnie z zasadą działania systemu, obie wartości powinny być identyczne.
+*
+*=== RESULTS_BEGIN ===
+
+.meas tran t_Rhine WHEN V(pulse_R)=0.5 RISE=1
+.meas tran t_Oder  WHEN V(pulse_O)=0.5 RISE=1
+.meas tran t_Elbe  WHEN V(pulse_E)=0.5 RISE=1
+.meas tran t_rel   WHEN V(pulse_rel)=0.5 RISE=1
+
+.meas tran dT_OE  PARAM='( t_Elbe - t_Oder )'
+.meas tran dT_ER  PARAM='( t_rel  - t_Elbe )'
+
+* Wykresy do oceny działania układu:
+*   r_km(t)      — trajektoria przelotu (km do celu),
+*   flag_R/O/E   — położenie względem wiązek,
+*   dT, tauE     — praca zegara X-Gerät,
+*   e_rel        — błąd odliczania,
+*   pulse_R/O/E, pulse_rel — impulsy znaczników i zrzutu.
+
+*=== RESULTS_END ===
+
+.end
