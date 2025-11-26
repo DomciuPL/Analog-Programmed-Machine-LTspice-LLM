@@ -1,0 +1,192 @@
+* =============================================================================
+* A4 / V-2 – efekt Dopplera w torze Brennschluss BBA
+* Wersja w hierarchii APM-1 (VL = 10 V, tor niskiej częstotliwości)
+* =============================================================================
+* Kontekst fizyczny:
+* Rakieta A4/V-2 była sterowana z ziemi za pomocą układu Brennschluss
+* Bodenanlage. Nadajnik naziemny BBA generował falę o częstotliwości f_TB
+*  30 MHz. Sygnał biegł do rakiety, gdzie ulegał przesunięciu Dopplera,
+* następnie był w rakiecie podwajany i odsyłany na ziemię. W BBA sygnał
+* powrotny po ponownym przesunięciu Dopplera był mieszany z lokalnym
+* podwojeniem częstotliwości nadajnika. Po filtracji dolnoprzepustowej
+* pozostawała różnicowa częstotliwość niska f_D(v), rzędu kilkuset herców,
+* zależna od aktualnej prędkości rakiety.
+*
+* Dla ruchu odsuwającego się przy v << c stosowano klasyczne przybliżenie
+* efektu Dopplera. W publikacji tor Brennschluss opisano wzorem
+*
+*       f_D(v) = 2 f_TB [ 1  (1  v/c)^2 ]    4 f_TB v / c,
+*
+* gdzie f_TB – częstotliwość nadajnika BBA, v – prędkość rakiety,
+* c – prędkość światła. Dla v  2000 m/s, f_TB = 30 MHz, c = 3·10^8 m/s
+* otrzymuje się f_D  800 Hz, co zgadza się z opisem „poniżej 1000 Hz”.
+*
+* Maszyna analogowa APM-1 odwzorowuje powyższy układ na poziomie
+* niskiej częstotliwości. Zamiast rzeczywistej fali radiowej i
+* mieszaczy pracuje się bezpośrednio na funkcji f_D(v), traktując
+* ją jako sygnał odniesiony do napięcia maszynowego VL.
+*
+* Reprezentacja maszynowa:
+* W APM-1 wszystkie zmienne fizyczne są przeskalowane do napięć VL.
+* W niniejszym programie przyjmuje się:
+*
+*   – VL  = 10 V  – pełna skala napięcia maszynowego,
+*   – v_FS   = 2000 m/s  – prędkość pełnoskalowa,
+*   – f_D,FS = 1000 Hz   – pełnoskalowa częstotliwość Dopplera.
+*
+* Skale liniowe wynoszą zatem:
+*
+*   v_phys   = k_v · v_M,          k_v = v_FS / VL  = 200 m/s na 1 V,
+*   f_D,phys = k_f · f_D,M,        k_f = f_D,FS/VL = 100 Hz na 1 V.
+*
+* Napięcie V(vM) reprezentuje prędkość rakiety, napięcie V(fDM) – częstotliwość
+* dopplerowską w jednostkach VL, a napięcie V(dop) – sinusoidalny przebieg
+* o chwilowej częstotliwości f_D,phys(t).
+*
+* Dynamika ruchu:
+* W celu uzyskania jawnej zależności czasu przyjmuje się prosty model
+* ruchu jednostajnie przyspieszonego:
+*
+*   v_M(t) = a_M · t,
+*
+* gdzie a_M = 1 V/s. Po 10 s otrzymuje się v_M = 10 V, co po przeskalowaniu
+* daje v_phys = 2000 m/s. Takie wartości odpowiadają typowym prędkościom
+* rakiety V-2 w chwili odcięcia silnika.
+*
+* Zależność dopplerowska w warstwie maszynowej:
+* Przy f_D,phys(v)  4 f_TB v/c oraz v_phys = k_v v_M otrzymuje się
+*
+*   f_D,phys(v_M) = 4 f_TB (k_v v_M) / c = (4 f_TB k_v / c) · v_M.
+*
+* Po przeskalowaniu do VL:
+*
+*   f_D,M(v_M) = f_D,phys/k_f = K_fd · v_M,
+*
+* gdzie
+*
+*   K_fd = 4 f_TB k_v / (c · k_f).
+*
+* Dla przyjętych parametrów K_fd  0,8 s¹ i po 10 s integracji (v_M=10 V)
+* otrzymuje się V(fDM)  8 V, co odpowiada f_D,phys = k_f · V(fDM) = 800 Hz.
+*
+* Pętla fazy:
+* Częstotliwość f_D,phys(t) jest następnie integrowana w czasie w celu
+* uzyskania fazy:
+*
+*   φ(t) =  2π f_D,phys(t) dt.
+*
+* Ponieważ f_D,phys(t) rośnie liniowo z t, faza ma postać kwadratową
+* φ(t) = π α t², a napięcie wyjściowe
+*
+*   u_D(t) = sin[ φ(t) ]
+*
+* jest klasycznym chirpem liniowym, którego częstotliwość rośnie od 0
+* do około 800 Hz w czasie 10 s. Sygnał ten odpowiada temu, co w torze
+* Brennschluss sterowało mostkiem częstotliwościowym i progami wyzwalającymi
+* moment Brennschluss.
+*
+* Schemat blokowy APM-1 (VL = 10 V):
+*
+*          aM [V/s]
+*
+*
+*        +---------+       +-----------+       +-----------+       +-----------+
+*        |  INT    |       |   GAIN    |       |   GAIN    |       |   INTp    |
+* GDN | vM(t)   |vM K_fd·vM   |fDM  kf·fDM   |fHz  2πfHz dt φ(t)
+*        +---------+       +-----------+       +-----------+       +-----------+
+*
+*
+*                                                               sin(φ) = V(dop)
+*
+* Interpretacja:
+* – blok INT realizuje całkowanie przyspieszenia a_M, generując prędkość v_M(t),
+* – blok GAIN (K_fd) przekształca v_M(t) na częstotliwość dopplerowską
+*   w jednostkach maszynowych V(fDM),
+* – drugi GAIN (k_f) zamienia ją na częstotliwość fizyczną f_Hz(t),
+* – blok INTp z parametrem K=2π całkuje f_Hz(t) do fazy φ(t),
+* – funkcja sinus (wehikuł poza standardową biblioteką APM-1) generuje
+*   napięcie przebiegu dopplerowskiego V(dop), które następnie eksportuje się
+*   do pliku WAV w celu odsłuchu.
+* =============================================================================
+
+
+.include apm1_lib.txt
+
+* Połączenie masy obliczeniowej GDN z węzłem odniesienia 0
+VGDN GDN 0 0
+
+* -------------------------------------------------------------------------
+* 1. PARAMETRY FIZYCZNE I SKALOWANIE
+* -------------------------------------------------------------------------
+.param VL   = 10               ; [V] napięcie maszynowe pełnej skali
+.param vFS  = 2000             ; [m/s] prędkość pełnoskalowa
+.param fTB  = 30e6             ; [Hz] częstotliwość nadajnika BBA
+.param c0   = 3e8              ; [m/s] prędkość światła
+
+.param kv   = {vFS/VL}         ; [m/s/V] skala prędkości (200)
+.param fDFS = 1000             ; [Hz] pełnoskalowa częstotliwość Dopplera
+.param kf   = {fDFS/VL}        ; [Hz/V] skala częstotliwości (100)
+
+* Współczynnik dla bloku GAIN przekształcającego prędkość na f_D,M
+* K_fd = 4 f_TB k_v / (c0 · k_f)
+.param Kfd = { 4*fTB*kv/(c0*kf) }
+
+* Stałe przyspieszenie maszynowe: a_M = 1 V/s  po 10 s v_M = 10 V
+.param aM = 1
+
+* -------------------------------------------------------------------------
+* 2. PĘTLA PRĘDKOŚCI RAKIETY – INTEGRATOR INT
+* -------------------------------------------------------------------------
+* Źródło stałe reprezentujące przyspieszenie w skali VL
+Va   acc GDN {aM}
+
+* Integrator INT: v_M(t) = IC +  SIGN*u dt
+* Tu: SIGN=+1, u = aM, IC=0  v_M(t) = aM · t
+XINT_V  vM  acc GDN INT PARAMS: IC=0 SIGN=1 leak=0
+
+* Węzeł vM: prędkość maszynowa; prędkość fizyczna v_phys(t) = kv · V(vM).
+
+* -------------------------------------------------------------------------
+* 3. BLOK CZĘSTOTLIWOŚCI DOPPLERA – GAIN
+* -------------------------------------------------------------------------
+* GAIN: fDM = Kfd · vM
+* Po 10 s: V(vM)=10 V  V(fDM)=Kfd*10  8 V  f_D(10 s)  800 Hz
+XFD   fDM  vM  GDN GAIN PARAMS: K={Kfd}
+
+* Konwersja z napięcia maszynowego częstotliwości do częstotliwości fizycznej:
+* f_Hz(t) = kf · V(fDM)
+XFHZ  fHz  fDM GDN GAIN PARAMS: K={kf}
+
+* -------------------------------------------------------------------------
+* 4. PĘTLA FAZY – INTEGRATOR INTp I GENERATOR CHIRPU
+* -------------------------------------------------------------------------
+* INTp: φ(t) = IC +  SIGN*K*u dt
+* Tu: SIGN=+1, K=2π, u = f_Hz(t)  dφ/dt = 2π f_Hz(t)
+XPHI  phi  fHz GDN INTp PARAMS: IC=0 SIGN=1 K={2*pi} leak=0
+
+* Sygnał wyjściowy niskiej częstotliwości:
+* u_D(t) = sin[ φ(t) ], amplituda w skali VL ( ±1 V)
+Bdop dop GDN V = { sin( V(phi,GDN) ) }
+
+* -------------------------------------------------------------------------
+* 5. ANALIZA CZASOWA I POMIARY
+* -------------------------------------------------------------------------
+.options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9
+.options maxstep = 10u
+
+.tran 0 10 0 10u
+
+* Prędkość maszynowa po 10 s (oczekiwane 10 V  2000 m/s)
+.meas tran v_final  FIND V(vM)          AT=10
+
+* Częstotliwość Dopplera po 10 s (oczekiwane ~800 Hz)
+.meas tran fD_final FIND { kf*V(fDM) }  AT=10
+
+* -------------------------------------------------------------------------
+* 6. EKSPORT SYGNAŁU DOPPLERA DO PLIKU WAV
+* -------------------------------------------------------------------------
+* Plik A4_Doppler_APM1.wav zawiera dziesięciosekundowy chirp
+* o częstotliwości rosnącej od 0 do około 800 Hz.
+.wave A4_Doppler_APM1.wav 16 44.1k V(dop)
+
+.end
