@@ -1,0 +1,88 @@
+---
+
+# APM-1 WOBULATOR LIBRARY — INSTRUKCJA
+
+## 1. Kontekst i założenia
+
+Biblioteka `apm1_wob_lib.txt` została zaprojektowana jako rozszerzenie standardowej biblioteki APM-1 (`apm1_lib.txt`) o bloki generujące przebiegi typu rampowego, przeznaczone do pobudzania układów obliczeniowych wzdłuż wybranej osi zmiennej niezależnej. Wszystkie subukłady wobulatorów używają jawnego pinu masy obliczeniowej `GDN`, który musi być połączony z węzłem `0`, oraz zakładają standardową skalę napięcia maszynowego `VL`, zgodną z APM-1 (domyślnie `VL = 10 V`).
+
+Wobulator pełni rolę generatora trajektorii po osi zmiennej niezależnej, typowo oznaczanej jako napięcie `x` w skali maszynowej. W typowym zastosowaniu komputer analogowy APM-1 implementuje nieliniową funkcję lub układ równań różniczkowych w pętli sprzężenia zwrotnego, natomiast wobulator wymusza powolną zmianę napięcia sterującego, co pozwala odwzorować całą charakterystykę funkcji lub profilu w zadanym przedziale.
+
+Biblioteka wobulatorów jest kompatybilna z APM-1 w tym sensie, że opiera się wyłącznie na blokach zdefiniowanych w `apm1_lib.txt` (w szczególności na integratorze z ograniczeniem `INTV`) oraz na tych samych zasadach skalowania zmiennych fizycznych do napięcia maszynowego `VL`.
+
+## 2. Inwentarz bloków wobulatora
+
+W wersji podstawowej biblioteka zawiera blok liniowego wobulatora napięcia `WOBLIN`. Został on zdefiniowany jako subukład:
+
+```spice
+.subckt WOBLIN out GDN PARAMS: VL=10 T=1 IC=0 leak=0
+* LLM_DESC_START
+* Function: Linear wobulator (ramp 0..VL).
+* Equation: out(t) = limit(IC + (VL/T)*t, 0, VL)
+* Pins: out, GDN
+* Params: VL – machine voltage scale,
+*         T  – ramp time from 0 to VL,
+*         IC – initial output at t = 0,
+*         leak – integrator leakage coefficient.
+* LLM_DESC_END
+
+B_WOB_U u GDN V = { VL/T }
+X_WOB_I out u GDN INTV PARAMS: IC={IC} SIGN=+1 L=0 H={VL} leak={leak}
+.ends WOBLIN
+```
+
+Blok `WOBLIN` posiada dwa piny zewnętrzne: wyjście `out`, które generuje napięcie rampowe w skali maszynowej, oraz pin `GDN`, który stanowi masę obliczeniową i musi zostać połączony z węzłem globalnym `0`. Jego działanie zostało oparte na integratorze `INTV` z biblioteki APM-1, pracującym w pętli z ograniczeniem przedziału `⟨0, VL⟩`.
+
+Równanie ciągłe realizowane przez blok można zapisać w postaci
+[
+V_\text{out}(t) = \operatorname{limit}!\left(IC + \frac{V_L}{T},t,;0,;V_L\right),
+]
+gdzie (V_L) oznacza napięcie maszynowe, (T) oznacza czas potrzebny do przejścia od wartości początkowej do saturacji na poziomie (V_L), a parametr `IC` stanowi wartość wyjściową przy czasie (t=0). Dodatkowy parametr `leak` pozwala wprowadzić liniowy upływ integratora, modelujący nieszczelność realnego kondensatora operacyjnego; przy `leak = 0` integrator zachowuje się idealnie w przedziale ograniczeń.
+
+W praktyce wobulator liniowy pełni rolę generatora „wirtualnego czasu obliczeniowego” po osi niezależnej: węzeł `out` może zostać utożsamiony ze zmienną maszynową `x`, a dalsze bloki APM-1 (sumatory, integratory, multiplikatory) przekształcają to napięcie w wartości funkcji lub równań różniczkowych w zadanej skali.
+
+## 3. Zasady skalowania i integracji z APM-1
+
+Wszystkie napięcia generowane przez `WOBLIN` znajdują się w tej samej skali `VL`, co reszta bloku obliczeniowego. Jeżeli zmienna fizyczna (X) miała zostać odwzorowana na odcinku (\langle X_\text{min}, X_\text{max}\rangle), a napięcie maszynowe miało przyjmować wartości w (\langle 0, V_L\rangle), wówczas obowiązywała transformacja liniowa
+[
+X(t) = X_\text{min} + \frac{X_\text{max} - X_\text{min}}{V_L},V_\text{out}(t),
+]
+przy czym `WOBLIN` generował jedynie przebieg `V(out)`, a za skalowanie do jednostek fizycznych odpowiadał blok `GAIN` lub odpowiednie źródło behawioralne `B`.
+
+Integrator wewnętrzny `INTV` wykorzystywany w `WOBLIN` jest tym samym integratorem, który stosuje się w głównej części APM-1, w szczególności w realizacji równań różniczkowych w pętlach sprzężenia zwrotnego. Oznacza to, że wobulator można bezpośrednio synchronizować z pozostałymi integratorami w układzie przez dobranie spójnych parametrów czasu `T` i stałych czasowych (\tau) w poszczególnych równaniach.
+
+W typowym zastosowaniu komputer analogowy otrzymuje następującą strukturę: na wejściu znajduje się wobulator generujący napięcie `x` w skali `VL`, następnie napięcie to ulega normalizacji (na przykład przez dzielenie przez `VL` w źródle behawioralnym), a dalej zostaje przetworzone przez blok nieliniowy (na przykład profil NACA, charakterystykę histerezy, funkcję rozkładu gęstości) zrealizowany w oparciu o sumatory i multiplikatory APM-1.
+
+## 4. Przykład: wobulator w generatorze profilu NACA 0012
+
+W generatorze przekroju profilu NACA 0012, w którym napięcie maszynowe reprezentowało znormalizowaną współrzędną cięciwy (x^*\in\langle 0,1\rangle), a blok nieliniowy obliczał połowę grubości względnej (y_t(x^*)), wobulator `WOBLIN` pełnił rolę źródła tej współrzędnej. Zależność
+[
+x^*(t) = \frac{V(x)}{V_L} = \frac{t}{T}
+]
+wynikała bezpośrednio z równania wobulatora, co oznaczało, że czas symulacji (\langle 0,T\rangle) odpowiadał pełnemu przejściu po cięciwie profilu od krawędzi natarcia do krawędzi spływu.
+
+Z punktu widzenia struktury netlisty fragment odpowiedzialny za generację zmiennej niezależnej przyjmował postać:
+
+```spice
+.include "apm1_lib.txt"
+.include "apm1_wob_lib.txt"
+
+.param VL   = 10
+.param Tsim = 1
+.param c_mm = 700
+
+* Wobulator maszynowy: rampa 0..VL w czasie Tsim
+XWOB x GDN WOBLIN PARAMS: VL={VL} T={Tsim} IC=0 leak=0
+
+* Znormalizowana współrzędna x* oraz x w milimetrach
+Bxn   xn    0  V = { limit( V(x)/VL , 0, 1 ) }
+Bx_mm x_mm  0  V = { (c_mm/VL)*V(x) }
+```
+
+W dalszej części układu napięcie `V(xn)` było przetwarzane przez blok wielomianowy NACA (realizujący (y_t(x^*))), a napięcia `V(yu_mm)` i `V(yl_mm)` były skalowane do milimetrów za pomocą stałej `c_mm`, tak aby bezpośrednio reprezentować górną i dolną powierzchnię profilu skrzydła w jednostkach długości. Wobulator stanowił więc „źródło czasu obliczeniowego” po osi cięciwy, w pełni zgodne z konwencją APM-1 i skalowaniem napięcia maszynowego `VL`.
+
+## 5. Uwagi praktyczne
+
+Dla poprawnej współpracy wobulatora z pętlami sprzężenia zwrotnego w głównym układzie APM-1 należy, po pierwsze, dobrać czas `T` tak, aby dynamika rampy była znacząco wolniejsza od stałych czasowych integratorów w pętlach, co minimalizuje zjawiska przejściowe i pozwala traktować wobulator jako pseudostatyczne pobudzenie zmiennej niezależnej; po drugie, utrzymywać spójność skali `VL` dla wszystkich bloków, aby uniknąć niejawnych przeskalowań między źródłami a blokami obliczeniowymi; po trzecie, dopilnować, aby pin `GDN` wobulatora zawsze był połączony z tym samym węzłem masy, co reszta biblioteki APM-1, zwykle oznaczonym jako `0`.
+
+Przestrzeganie tych zasad gwarantuje, że biblioteka wobulatora pozostaje w pełni kompatybilna z APM-1, a blok `WOBLIN` może być traktowany jako element pierwszej klasy w hierarchii układów komputera analogowego, odpowiedzialny za kontrolowane przemiatanie napięcia maszynowego po zadanym przedziale zmiennej niezależnej.

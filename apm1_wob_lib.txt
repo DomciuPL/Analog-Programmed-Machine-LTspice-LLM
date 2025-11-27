@@ -1,0 +1,28 @@
+﻿* =====================================================================
+* APM-1 WOBULATOR LIBRARY
+* Oddzielna biblioteka wobulatorów, kompatybilna z APM-1 (apm1_lib.txt)
+* Wszystkie subukłady używają jawnego pinu masy "GDN"
+* =====================================================================
+
+* ---------------- LINIOWY WOBULATOR NAPIĘCIA ----------------
+* out(t) = limit( IC + (VL/T)*t , 0 , VL )
+
+.subckt WOBLIN out GDN PARAMS: VL=10 T=1 IC=0 leak=0
+* LLM_DESC_START
+* Function: Linear wobulator (ramp 0..VL).
+* Equation: out(t) = limit(IC + (VL/T)*t, 0, VL)
+* Pins: out, GDN
+* Params: VL – machine voltage scale,
+*         T  – ramp time from 0 to VL,
+*         IC – initial output at t = 0,
+*         leak – integrator leakage coefficient.
+* LLM_DESC_END
+
+* Wejście integratora – stałe napięcie VL/T
+B_WOB_U u GDN V = { VL/T }
+
+* Integrator z ograniczeniem do przedziału [0, VL]
+* Wymaga zdefiniowanego w APM-1 subukładu INTV.
+X_WOB_I out u GDN INTV PARAMS: IC={IC} SIGN=+1 L=0 H={VL} leak={leak}
+
+.ends WOBLIN
