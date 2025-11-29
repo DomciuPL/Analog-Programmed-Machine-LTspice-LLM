@@ -1,0 +1,207 @@
+* ============================================================
+* APM-1 – PAMIĘĆ DŹWIĘKOWA LICZBY 997 (LINIA OPÓŹNIAJĄCA EDSAC)
+* ============================================================
+*
+* Cel symulacji:
+*  1. Zasymulować w środowisku LTspice + APM-1 działanie jednokanałowej
+*     pamięci dźwiękowej (akustycznej linii opóźniającej) w duchu EDSAC
+*     oraz radarów impulsowych z liniami akustycznymi.
+*  2. Zasilić linię opóźniającą skończonym słowem binarnym odpowiadającym
+*     liczbie dziesiętnej 997 i zamknąć układ w pętli recyrkulacji tak,
+*     aby słowo krążyło w czasie z okresem równym czasowi opóźnienia.
+*  3. Dokonać regeneracji (progowania) sygnału w oparciu o blok CMPad
+*     oraz skalowanie do napięcia maszynowego VL za pomocą bloku GAIN.
+*
+* Interpretacja fizyczna:
+*  - BWRITE(t) pełni rolę wejściowego modulatora, który jednorazowo
+*    „wstrzykuje” do linii strumień bitów 0/1 w postaci prostokątów
+*    napięcia maszynowego VL względem masy obliczeniowej GDN;
+*  - XDL (DELAY) jest odpowiednikiem kolumny rtęci lub ośrodka
+*    piezoelektrycznego, w którym fala dźwiękowa realizuje operator
+*    transportowy y(t)=x(t–T);
+*  - XCMP+XGAIN odpowiadają odbiornikowi z progiem, który kształtuje
+*    poziomy logiczne oraz nadaje im pełną amplitudę VL;
+*  - BLOOP zamyka pętlę sprzężenia zwrotnego, przełączając linię z fazy
+*    zapisu (zasilanie z BWRITE) w fazę pamięci (zasilanie z BIT_SHAPED).
+*
+* Kodowanie liczby 997:
+*  997 = 1111100101
+*  Słowo ma długość NBIT=10, a bity od najstarszego b9 do najmłodszego b0
+*  mają postać: b9=1, b8=1, b7=1, b6=1, b5=1, b4=0, b3=0, b2=1, b1=0, b0=1.
+*  Każdy bit trwa BIT_T=2 µs, a słowo rozpoczyna się w chwili T0=1 µs.
+*  Linia opóźniająca ma czas T = tau = NBIT·BIT_T = 20 µs, dzięki czemu
+*  jedna ramka czasowa linii dokładnie obejmuje całe słowo.
+*
+* Schemat blokowy (poziom abstrakcji APM-1, przestrzeń napięć VL):
+*
+*            (fazazapisu)                         (fazapamięci)
+*              write(t)
+*                 |
+*                 v
+*        +------------------+
+*        |  BWRITE (ROM)    |
+*        +------------------+
+*                 |
+*                 v
+*          +--------------+
+* BIT_SHAPED <--- BLOOP   | <-------------------------------+
+*          ^     (MUX)    |                                |
+*          |  nIN_LOOP    |                                |
+*          +--------------+                                |
+*                 |                                       |
+*                 v                                       |
+*           +-----------+                                 |
+*           |  XDL      |  DELAY (DELAY LINE)             |
+*           |  (DELAY)  |  y(t)=x(t–tau)                  |
+*           +-----------+                                 |
+*               | nDELAY_RAW                             |
+*               v                                         |
+*        +---------------+                                |
+*        |   XCMP        |  CMPad: przerzutnik progowy    |
+*        | (TH = VL/2)   |  wyjście LOGIC_RAW = 0 lub 1   |
+*        +---------------+                                |
+*               | LOGIC_RAW                               |
+*               v                                         |
+*        +---------------+                                |
+*        |   XGAIN       |  GAIN: skalowanie 0/1 -> 0/VL  |
+*        | (K = VL)      |  wynik BIT_SHAPED              |
+*        +---------------+                                |
+*                                                          |
+*                                                          +
+*   Pętla sprzężenia zwrotnego realizuje recyrkulację słowa
+*   binarnego 997 w dziedzinie napięcia maszynowego VL(t).
+*
+* ============================================================
+
+.include "apm1_lib.txt"
+
+* masa obliczeniowa APM-1
+VGDN GDN 0 0
+
+* ------------------------------------------------------------
+* Parametry maszyny i linii opóźniającej (skalowanie w czasie)
+* ------------------------------------------------------------
+.param VL     = 10           ; napięcie maszynowe ("1")
+.param NBIT   = 10           ; liczba bitów w słowie
+.param BIT_T  = 2u           ; czas jednej szczeliny bitowej
+.param T0     = 1u           ; początek słowa (pierwszy bit b9)
+.param tau    = {NBIT*BIT_T} ; czas opóźnienia linii = długość słowa
+.param TLOAD  = {T0+tau}     ; chwila przełączenia na recyrkulację
+
+.options plotwinsize=0 reltol=1e-4 abstol=1e-7
+
+* ============================================================
+* BLOK 1 – ŹRÓDŁO SŁOWA 997 (BWRITE)
+* ------------------------------------------------------------
+* Funkcja BWRITE write,GDN generuje przebieg napięcia maszynowego,
+* który w przedziale [T0, T0+NBIT·BIT_T) przyjmuje wartości VL lub 0
+* zgodnie z mapą bitów, a poza tym zakresem jest równy 0.
+*
+* Definicja indeksu slotu:
+*    k = int( (time - T0)/BIT_T ), przy czym k = 0..9
+*
+* Mapa bitów (k -> b_k):
+*    0 -> 1
+*    1 -> 1
+*    2 -> 1
+*    3 -> 1
+*    4 -> 1
+*    5 -> 0
+*    6 -> 0
+*    7 -> 1
+*    8 -> 0
+*    9 -> 1
+*
+* Funkcja table() mapuje indeks slotu na wartość bitu 0/1 i jest
+* przemnożona przez VL, aby od razu uzyskać poziomy 0 lub VL.
+* ============================================================
+BWRITE write GDN V =
++ if( time < {T0}, 0,
++ if( time >= {T0+NBIT*BIT_T}, 0,
++ {VL}*table( int( (time-{T0})/{BIT_T} ),
++   0  1
++   1  1
++   2  1
++   3  1
++   4  1
++   5  0
++   6  0
++   7  1
++   8  0
++   9  1 )))
+
+* ============================================================
+* BLOK 2 – PRZEŁĄCZNIK FAZA ZAPISU / FAZA PAMIĘCI (BLOOP)
+* ------------------------------------------------------------
+* Węzeł nIN_LOOP jest wejściem linii opóźniającej DELAY.
+* Do czasu TLOAD (koniec słowa) wejście pochodzi wyłącznie
+* ze źródła BWRITE – jest to faza zapisu słowa do pamięci.
+* Po chwili TLOAD źródłem wejścia staje się BIT_SHAPED, czyli
+* zregenerowane słowo krążące w pętli – faza pamięci (recyrkulacja).
+* ============================================================
+BLOOP nIN_LOOP GDN V = if( time < {TLOAD}, V(write,GDN), V(BIT_SHAPED,GDN) )
+
+* ============================================================
+* BLOK 3 – LINIA OPÓŹNIAJĄCA APM-1 (XDL: DELAY)
+* ------------------------------------------------------------
+* Podukład DELAY z biblioteki APM-1 realizuje operator transportowy:
+*    V(nDELAY_RAW,GDN)(t) = V(nIN_LOOP,GDN)(t - tau)
+* dla t >= tau. W sensie „akustycznej” pamięci dźwiękowej DELAY
+* modeluje propagację fali dźwiękowej w ośrodku (rtęć, kryształ),
+* której czas przejścia przez linię wynosi tau.
+* ============================================================
+XDL nDELAY_RAW nIN_LOOP GDN DELAY PARAMS: T={tau}
+
+* ============================================================
+* BLOK 4 – REGENERACJA: KOMPArator + WZMACNIACZ
+* ------------------------------------------------------------
+* XCMP (CMPad) porównuje napięcie z linii z progiem VL/2 i generuje
+* przebieg LOGIC_RAW równy logicznie 0 lub 1 (poziom bezwymiarowy).
+* XGAIN (GAIN) skaluje LOGIC_RAW do napięcia maszynowego VL, przez co
+* BIT_SHAPED przyjmuje dokładnie wartości 0 lub VL.
+* BIT_SHAPED jest następnie zawracany do BLOOP jako źródło recyrkulacji.
+* ============================================================
+XCMP  LOGIC_RAW nDELAY_RAW GDN GDN CMPad PARAMS: th={VL/2}
+XGAIN BIT_SHAPED LOGIC_RAW GDN GAIN PARAMS: K={VL}
+
+* ============================================================
+* ANALIZA CZASOWA I POMIARY
+* ------------------------------------------------------------
+* Analiza TRAN:
+*  - czas całkowity 200 µs obejmuje wiele obiegów słowa 997
+*    w pętli opóźniającą DELAY,
+*  - krok maksymalny 50 ns zapewnia właściwą rozdzielczość zboczy.
+*
+* Pomiar Tloop:
+*  - ze względu na to, że w każdej ramce słowa występują dwa zbocza
+*    narastające 01, do estymacji okresu obiegu wygodnie jest użyć
+*    dwóch odległych zboczy w ustalonym stanie pracy pętli, na przykład
+*    10-tego i 12-tego narastania. Różnica czasów t_rise12 - t_rise10
+*    odpowiada jednemu pełnemu cyklowi słowa w pętli i powinna być
+*    zbliżona do tau = 20 µs.
+* ============================================================
+.tran 0 200u 0 50n
+
+.meas TRAN t_rise10 WHEN V(BIT_SHAPED,GDN)={VL/2} RISE=10
+.meas TRAN t_rise12 WHEN V(BIT_SHAPED,GDN)={VL/2} RISE=12
+.meas TRAN Tloop    PARAM='t_rise12 - t_rise10'
+
+* ============================================================
+* EKSPORT DO WAV (SONIFIKACJA PAMIĘCI DŹWIĘKOWEJ)
+* ------------------------------------------------------------
+* Dyrektywa .wave zapisuje przebiegi napięć (odniesione do węzła 0)
+* jako wielokanałowy plik WAV. Ponieważ GDN jest zwarte z 0 przez
+* VGDN, napięcia V(nIN_LOOP), V(nDELAY_RAW), V(BIT_SHAPED) są
+* równoważne odpowiednim napięciom względem masy obliczeniowej.
+*
+* Kanałów 3:
+*  - kanał 1: V(nIN_LOOP)     – sygnał wprowadzany do DELAY;
+*  - kanał 2: V(nDELAY_RAW)   – odpowiedź linii opóźniającej;
+*  - kanał 3: V(BIT_SHAPED)   – zregenerowane słowo 997 krążące
+*                               w pętli pamięci dźwiękowej.
+* Częstotliwość próbkowania 44,1 kHz, rozdzielczość 16 bitów.
+* ============================================================
+.wave "memory_997_apm1.wav" 16 44100 V(nIN_LOOP) V(nDELAY_RAW) V(BIT_SHAPED)
+
+.backanno
+.end
