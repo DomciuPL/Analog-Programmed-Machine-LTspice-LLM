@@ -1,0 +1,25 @@
+* APM-1: initial conditions, signs and integrator gain
+.include "../apm1_lib.txt"
+.param VL=10
+Vu u 0 1
+XPOS positive u 0 INT IC=2 SIGN=1 leak=0
+XNEG negative u 0 INT IC=2 SIGN=-1 leak=0
+XGAIN scaled u 0 INTp IC=2 SIGN=1 K=2 leak=0
+XPINV noninverting u 0 INTpinv IC=0 K=3 leak=0
+XCONST constant 0 0 INT IC=3 SIGN=1 leak=0
+.options method=gear reltol=1e-6 abstol=1e-9 vntol=1e-9 plotwinsize=0
+.tran 0 1 0 1m
+.save V(positive) V(negative) V(scaled) V(noninverting) V(constant)
+*=== RESULTS_BEGIN ===
+.meas tran positive_value FIND V(positive) AT=1
+.meas tran negative_value FIND V(negative) AT=1
+.meas tran scaled_value FIND V(scaled) AT=1
+.meas tran noninverting_value FIND V(noninverting) AT=1
+.meas tran constant_value FIND V(constant) AT=1
+.meas tran positive_error PARAM abs(positive_value-3)
+.meas tran negative_error PARAM abs(negative_value-1)
+.meas tran scaled_error PARAM abs(scaled_value-4)
+.meas tran noninverting_error PARAM abs(noninverting_value-3)
+.meas tran constant_error PARAM abs(constant_value-3)
+*=== RESULTS_END ===
+.end

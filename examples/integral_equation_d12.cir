@@ -1,0 +1,51 @@
+* APM-1: Integral equation (D-12 brochure)pl
+* Original description: ../docs/examples/Integral_equation_D-12_brochure_pl_original.txt
+* Current instructions and interpretation: ../docs/advanced_examples_pl.md
+* Author of original examples: Dariusz Domal
+
+.include "../apm1_lib.txt"
+.param VL=10
+.param acoef=0.14 bcoef=0.02752 Y_STOP=0.99
+.func Phi(z) {ln(z)-(1+acoef)/(acoef-bcoef)*ln(1+acoef*z)+(1+bcoef)/(acoef-bcoef)*ln(1+bcoef*z)}
+.param x_stop={(1-exp(-(Phi(Y_STOP)-Phi(0.25))))/A}
+.param A_boundary={1-exp(-(Phi(1)-Phi(0.25)))}
+.step param A list 0.3000 0.2927 0.2571 0.2563
+
+C_integrator y 0 1 IC=0.25
+G_integrator 0 y value={V(dydx)}
+
+V_one one 0 DC 1
+V_A A_in 0 {A}
+B_time x 0 V={time}
+
+X_g_n1a y_n1a y 0 GAIN K={acoef}
+X_s_n1 term_n1 one y_n1a 0 SUM Ku=1 Kd=1
+X_g_n2a y_n2a y 0 GAIN K={bcoef}
+X_s_n2 term_n2 one y_n2a 0 SUM Ku=1 Kd=1
+X_g_A_vl A_vl A_in 0 GAIN K={VL}
+X_m_p1 p1 A_vl y 0 MUL VL={VL}
+X_g_p1_vl p1_vl p1 0 GAIN K={VL}
+X_m_p2 p2 p1_vl term_n1 0 MUL VL={VL}
+X_g_p2_vl p2_vl p2 0 GAIN K={VL}
+X_m_Num Num p2_vl term_n2 0 MUL VL={VL}
+
+X_s_d1 term_d1 one y 0 SUM Ku=1 Kd=-1
+X_m_Ax Ax A_vl x 0 MUL VL={VL}
+X_s_d2 term_d2 one Ax 0 SUM Ku=1 Kd=-1
+X_g_d1_vl term_d1_vl term_d1 0 GAIN K={VL}
+X_m_Den Den term_d1_vl term_d2 0 MUL VL={VL}
+
+B_division dydx 0 V = V(Num) / V(Den)
+
+.options method=gear maxord=2 reltol=1e-9 abstol=1e-12 vntol=1e-9 plotwinsize=0
+.tran 0 {x_stop} 0 10u uic
+
+*=== RESULTS_BEGIN ===
+.meas tran y_at_1 FIND V(y) AT=1
+.meas tran y_stop FIND V(y) AT={x_stop}
+.meas tran x_stop_value PARAM x_stop
+.meas tran A_for_boundary PARAM A_boundary
+.meas tran y_stop_error PARAM abs(y_stop-Y_STOP)
+.meas tran A_val PARAM A
+*=== RESULTS_END ===
+.end

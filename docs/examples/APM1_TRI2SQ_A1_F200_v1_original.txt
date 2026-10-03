@@ -1,0 +1,77 @@
+ARCHIWUM KOMENTARZY — commit b7a5d54
+Materiał może zawierać błędy. Nie jest aktualną specyfikacją ani kodem do .include.
+Aktualne równania i instrukcje: ../reference_pl.md, ../advanced_examples_pl.md.
+
+* ===================================================================
+* APM-1 — Triangle Differentiation to Square Wave (+/1) + 0/1 map
+* Fully library-pure (apm1_lib.txt): CLK, ADD2W, GAIN, INT, DIF, LIM
+*
+* PURPOSE
+*   Realize an ideal differentiator for a triangle waveform using
+*   APM-1 building blocks only. The chain produces:
+*     tri(t)  ——d/dt  y(t)  square ±1
+*     y01(t) = affine(y)  [0,1] for logic or plotting.
+*
+* MODELING PRINCIPLES (Analog Computer Style)
+*   • Machine voltage scale VL defines the “unit level”.
+*   • Variable scaling preserves numerics: the integrator builds a
+*     triangle with slope ±4·A·f0 so that the derivative is constant
+*     on plateaus. The differentiator gain compensates that slope.
+*   • No algebraic loops. All blocks have dynamical pins and GDN.
+*   • Limiter confines the machine variable to ±1 to stabilize flanks.
+*
+* EXPECTED BEHAVIOR
+*   For the triangle with amplitude ±A and frequency f0:
+*     d(tri)/dt = ±(4·A·f0) on plateaus.
+*   With Kdif = 1/(4·A·f0) the differentiated output is
+*     y(t)  +1 on the second half-period, 1 on the first.
+*   The 0/1 mapped signal has duty  0.5.
+*
+* HOW TO READ THE MEASUREMENTS
+*   Y_abs   — average of |y| over one period   1.
+*   Y01_dut — average of y01 over one period   0.5 (duty).
+*   Y_neg   — average y over the first half-period (away from edges)
+*               1 with the chosen sign convention.
+*   Y_pos   — average y over the second half-period   +1.
+*
+* BLOCK DIAGRAM (library hierarchy)
+*
+*      +-----------+    +--------------+    +-----------+    +-----------+
+*      |  CLK f0   |--->|  ADD2W (2·s -1) |-->|  GAIN   |--->|   INT     |
+*      |  0/1 s01  |    |   spm1 = ±1   |    | 4·A·f0  |    |  tri(t)   |
+*      +-----------+    +--------------+    +-----------+    +-----------+
+*                                                                |
+*                                                                v
+*                         +-----------+    +-----------+    +------------------+
+*                         |   DIF     |--->|   LIM     |--->| ADD2W (0.5y+0.5) |
+*                         | K=1/(4Af0)|   |  L=1 H=1 |    |   y01  [0,1]    |
+*                         +-----------+    +-----------+    +------------------+
+*                                |
+*                                +--> y(t)  square ±1
+*
+* RUNTIME NOTES
+*   • Gear (order 2) is used for robust transients near flanks.
+*   • The time step 1 µs at T0=1/f0=5 ms gives 5000 samples/period.
+*   • All “RESULTS” are computed with margin eps away from edges.
+* ===================================================================
+* ---- Machine scale and signal parameters ------------------------------------
+* ---- Sources (library-pure) -------------------------------------------------
+* ---- 0/1  ±1 : spm1 = 2*s01  1 -------------------------------------------
+* ---- Integrator builds the triangle ±A (slope = ±4·A·f0) --------------------
+* ---- Differentiation and limiting to ±1 -------------------------------------
+*      d(tri)/dt = ±(4·A·f0)    Kdif = 1/(4·A·f0) for y_pos  +1 on 2nd half
+* ---- 0/1 mapping on library blocks: y01 = 0.5*y + 0.5*one -------------------
+* ---- Analysis control -------------------------------------------------------
+* ---- RESULTS (parametric windows, margin away from edges) -------------------
+* INTERPRETATION GUIDE
+*   • Y_abs  1    correct normalization of the differentiator.
+*   • Y01_dut  0.5   equal dwell times of ±1 levels (square wave).
+*   • Y_neg  1, Y_pos  +1   correct polarity per K in DIF.
+*   Sensitivity: decreasing eps probes closer to edges and may reduce
+*   |Y_*| slightly due to limiter dynamics and timestep.
+*
+* OPTIONAL PARAMETRIC TESTS (uncomment to verify invariance)
+*   .step param A 0.5 2 0.5
+*   .step param f0 100 400 100
+*   With Kint=4·A·f0 and Kdif=1/(4·A·f0) the metrics remain invariant.
+* ===================================================================

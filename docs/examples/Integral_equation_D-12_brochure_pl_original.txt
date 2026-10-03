@@ -1,0 +1,120 @@
+ARCHIWUM KOMENTARZY — commit b7a5d54
+Materiał może zawierać błędy. Nie jest aktualną specyfikacją ani kodem do .include.
+Aktualne równania i instrukcje: ../reference_pl.md, ../advanced_examples_pl.md.
+
+* ===================================================================================
+* ==                FINALNA WERSJA DOKUMENTACJI - WERSJA HYBRYDOWA                 ==
+* ===================================================================================
+*
+* Plik:     Integral_equation_D-12_brochure.cir
+* Cel:      Odtworzenie wyników historycznej symulacji z broszury D-12,
+*           przedstawiającej rozwiązanie równania całkowego na komputerze analogowym.
+*
+* ===================================================================================
+*
+*                                 TREŚĆ ZADANIA
+*
+* Zadanie pochodzi z broszury technicznej D-12. Celem jest rozwiązanie poniższego
+* równania całkowego, a w szczególności znalezienie takiej wartości parametru 'A',
+* dla której rozwiązanie spełnia warunek brzegowy: y(x=1) = 1.
+*
+*                      x
+*                     /
+* y(x) = 0.25 +       |    A * y(t) * [1 + 0.14*y(t)] * [1 + 0.02752*y(t)]
+*                     |   -------------------------------------------------- dt
+*                    /                 [1 - y(t)] * [1 - A*t]
+*                   0
+*
+* z warunkiem początkowym y(0) = 0.25. Broszura podaje, że poszukiwana wartość
+* to A = 0.2563. Celem tej symulacji jest odtworzenie historycznego wyniku, w tym
+* pokazanie zachowania układu dla różnych wartości parametru A.
+*
+* ===================================================================================
+*
+*                  ARCHITEKTURA ROZWIĄZANIA I SCHEMAT BLOKOWY
+*
+* Zastosowano architekturę hybrydową, która łączy "najlepsze z obu światów":
+* 1. MATEMATYCZNA POPRAWNOŚĆ: Obliczenie pochodnej dy/dx odbywa się krok po kroku,
+*    używając prostych bloków (MUL, SUM, GAIN) z biblioteki komputera analogowego.
+*    Gwarantuje to, że złożone równanie jest obliczane poprawnie.
+* 2. NUMERYCZNA STABILNOŚĆ: Całkowanie (integracja) wyniku jest realizowane za
+*    pomocą najstabilniejszej metody w SPICE: ładowania kondensatora (C) za
+*    pomocą źródła prądowego (G).
+*
+*                    +-------------------------------------------------+
+*                    |      BLOK OBLICZENIOWY "KOMPUTERA ANALOGOWEGO"    |
+*                    | Oblicza dy/dx używając prostych bloków (MUL, SUM) | ----> V(dydx)
+*                    | Wejścia: V(y), V(x), A                            |
+*                    +-------------------------------------------------+
+*                       ^                                                 |
+*                       |   (Sprzężenie zwrotne)                            |
+*                       |                                                 |
+*                    +--|-------------------------------------------------+
+*                    |  |
+*                    |  |       +--------------------------------------------+
+*                    |  |       |             RDZEŃ INTEGRATORA SPICE        |
+*                    |  +------>| G_integrator (Źródło prądowe I = V(dydx))  |
+*                    | V(y)     +--------------------------------------------+
+*                    |                  | (prąd)
+*                    |                  v
+*                    |          +------------------+
+*                    |          |  C_integrator    |------> V(y) (WYNIK)
+*                    |          |  (Kondensator 1F)|
+*                    |          +------------------+
+*
+* ===================================================================================
+*
+*                         DO CZEGO MOGŁY SŁUŻYĆ TAKIE OBLICZENIA?
+*
+* Równania o takiej strukturze, gdzie w mianowniku znajduje się człon typu (1-y),
+* często modelują zjawiska o charakterze "eksplozyjnym" lub "lawinowym", które
+* gwałtownie przyspieszają w miarę zbliżania się do pewnego punktu krytycznego.
+* Potencjalne zastosowania to:
+*
+* 1. REAKCJE CHEMICZNE: Modelowanie reakcji autokatalitycznych, gdzie produkt reakcji
+*    jest jednocześnie jej katalizatorem. Tempo reakcji rośnie lawinowo, aż do
+*    wyczerpania substratów (co symbolizuje człon (1-y)).
+*
+* 2. FIZYKA I TECHNIKA: Analiza niestabilności termicznej (thermal runaway) w
+*    reaktorach chemicznych lub bateriach. 'y' mogłoby reprezentować temperaturę,
+*    która rośnie w pętli dodatniego sprzężenia zwrotnego, aż do osiągnięcia
+*    punktu krytycznego, w którym następuje eksplozja lub zapłon.
+*
+* 3. DYNAMIKA POPULACJI: Modelowanie wzrostu populacji w specyficznych warunkach,
+*    gdzie zbliżanie się do granicy pojemności środowiska powoduje gwałtowne
+*    i niestabilne zmiany, zamiast łagodnego nasycenia (jak w klasycznym
+*    modelu logistycznym).
+*
+* 4. EKONOMIA: Modelowanie baniek spekulacyjnych na rynkach finansowych, gdzie
+*    wzrost ceny aktywa napędza dalsze zakupy, prowadząc do gwałtownego wzrostu
+*    (asymptoty), który kończy się krachem.
+*
+* Zadanie to jest więc doskonałym przykładem analizy stabilności złożonego
+* systemu dynamicznego.
+*
+* ===================================================================================
+* =====================================================================
+* Parameters and Global Settings
+* =====================================================================
+* Dyrektywa .step uruchomi symulację dla każdej z wartości A z listy.
+* =====================================================================
+* The Canonical G+C Integrator
+* =====================================================================
+* Rdzeń rozwiązania. Całkuje wartość z węzła 'dydx'.
+* =====================================================================
+* Step-by-Step "Analog Computer" Calculation of the Derivative
+* =====================================================================
+* Obliczenia krok po kroku gwarantują poprawność matematyczną.
+* --- Constant and Input Sources ---
+* Generowanie sygnału napięciowego x(t) równego czasowi symulacji.
+* --- Numerator (Num) Sub-circuit ---
+* Num = A * y * (1 + 0.14*y) * (1 + 0.02752*y)
+* --- Denominator (Den) Sub-circuit ---
+* Den = (1 - y) * (1 - A*x)
+* --- Final Division ---
+* Proste źródło B-source wykonuje ostateczne, czyste dzielenie.
+* =====================================================================
+* Simulation Control
+* =====================================================================
+*=== RESULTS_BEGIN ===
+*=== RESULTS_END ===

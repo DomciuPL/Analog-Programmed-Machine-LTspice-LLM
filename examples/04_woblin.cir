@@ -1,0 +1,22 @@
+* APM-1: one-shot linear sweeps, initial condition and saturation
+.include "../apm1_lib.txt"
+.include "../apm1_wob_lib.txt"
+.param VL=10 Tsim=1
+XW0 w0 0 WOBLIN VL={VL} T={Tsim} IC=0 leak=0 Taw=1m
+XW2 w2 0 WOBLIN VL={VL} T={Tsim} IC=2 leak=0 Taw=1m
+.options method=gear reltol=1e-6 abstol=1e-9 vntol=1e-9 plotwinsize=0
+.tran 0 1.2 0 100u
+.save V(w0) V(w2)
+*=== RESULTS_BEGIN ===
+.meas tran w0_half FIND V(w0) AT=0.5
+.meas tran w2_half FIND V(w2) AT=0.5
+.meas tran w0_end FIND V(w0) AT=1.2
+.meas tran w2_end FIND V(w2) AT=1.2
+.meas tran w2_near_limit WHEN V(w2)=9.99 RISE=1
+.meas tran w0_half_error PARAM abs(w0_half-5)
+.meas tran w2_half_error PARAM abs(w2_half-7)
+.meas tran w0_end_error PARAM abs(w0_end-10)
+.meas tran w2_end_error PARAM abs(w2_end-10)
+.meas tran w2_timing_error PARAM abs(w2_near_limit-0.799)
+*=== RESULTS_END ===
+.end

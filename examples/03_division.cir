@@ -1,0 +1,29 @@
+* APM-1: signed constant denominator, C=A/B, explicit scale forwarding
+* B must be nonzero and constant. Gain sign makes k_eff*B positive.
+* Dynamic denominators and crossing B=0 require a separate guarded controller.
+.include "../apm1_lib.txt"
+.param VL=10 NOM_A0=6 NOM_B0=3 NOM_k=150
+.param NOM_L={-VL} NOM_H={VL}
+.step param VL list 5 10 20
+.step param NOM_B0 list -3 3
+V_A nom_a 0 {NOM_A0}
+V_B nom_b 0 {NOM_B0}
+X_BVL nom_bvl nom_b 0 GAIN K={VL}
+X_MUL nom_bc nom_bvl nom_c 0 MUL VL={VL}
+X_SUM nom_e nom_a nom_bc 0 SUM Ku=1 Kd=-1
+X_K nom_es nom_e 0 GAIN K={NOM_k*sgn(NOM_B0)}
+X_INT nom_c nom_es 0 INTV SIGN=1 IC=0 L={NOM_L} H={NOM_H} leak=0 Taw=1m
+.options method=gear maxord=2 trtol=5 reltol=1e-6 abstol=1e-9 vntol=1e-9 plotwinsize=0
+.tran 0 60m 0 1u
+.save V(nom_c) V(nom_e) V(nom_bc)
+*=== RESULTS_BEGIN ===
+.meas tran NOM_C_nom PARAM NOM_A0/NOM_B0
+.meas tran NOM_C_avg AVG V(nom_c) FROM=40m TO=60m
+.meas tran NOM_C_abs_error PARAM abs(NOM_C_avg-NOM_C_nom)
+.meas tran NOM_C_relative_error PARAM abs((NOM_C_avg-NOM_C_nom)/NOM_C_nom)
+.meas tran NOM_t_tau WHEN V(nom_e)={NOM_A0/exp(1)} FALL=1
+.meas tran NOM_t_1pct WHEN V(nom_e)={0.01*NOM_A0} FALL=1
+.meas tran NOM_tau_error PARAM abs(NOM_t_tau-1/(NOM_k*abs(NOM_B0)))
+.meas tran NOM_settling_error PARAM abs(NOM_t_1pct-ln(100)/(NOM_k*abs(NOM_B0)))
+*=== RESULTS_END ===
+.end

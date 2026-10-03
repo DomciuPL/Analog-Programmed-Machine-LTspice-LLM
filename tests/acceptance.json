@@ -1,0 +1,445 @@
+{
+  "description": "Acceptance targets derived from equations, not recorded LTspice results. Units follow .meas expressions. Bounds are inclusive. All .step runs must pass.",
+  "cases": [
+    {
+      "path": "examples/01_algebra.cir",
+      "suite": "core",
+      "runs": 3,
+      "limits": {
+        "gain_error": [
+          0,
+          1e-06
+        ],
+        "sum_error": [
+          0,
+          1e-06
+        ],
+        "normalization_error": [
+          0,
+          1e-06
+        ],
+        "product_error": [
+          0,
+          1e-06
+        ],
+        "pot_error": [
+          0,
+          1e-06
+        ]
+      }
+    },
+    {
+      "path": "examples/02_integrator.cir",
+      "suite": "core",
+      "runs": 1,
+      "limits": {
+        "positive_error": [
+          0,
+          1e-05
+        ],
+        "negative_error": [
+          0,
+          1e-05
+        ],
+        "scaled_error": [
+          0,
+          1e-05
+        ],
+        "noninverting_error": [
+          0,
+          1e-05
+        ],
+        "constant_error": [
+          0,
+          1e-05
+        ]
+      }
+    },
+    {
+      "path": "examples/03_division.cir",
+      "suite": "core",
+      "runs": 6,
+      "limits": {
+        "NOM_C_abs_error": [
+          0,
+          0.0001
+        ],
+        "NOM_C_relative_error": [
+          0,
+          0.0001
+        ],
+        "NOM_tau_error": [
+          0,
+          5e-06
+        ],
+        "NOM_settling_error": [
+          0,
+          5e-06
+        ]
+      }
+    },
+    {
+      "path": "examples/04_woblin.cir",
+      "suite": "core",
+      "runs": 1,
+      "limits": {
+        "w0_half_error": [
+          0,
+          0.0001
+        ],
+        "w2_half_error": [
+          0,
+          0.0001
+        ],
+        "w0_end_error": [
+          0,
+          0.0001
+        ],
+        "w2_end_error": [
+          0,
+          0.0001
+        ],
+        "w2_timing_error": [
+          0,
+          0.0001
+        ]
+      }
+    },
+    {
+      "path": "examples/05_sampling.cir",
+      "suite": "core",
+      "runs": 1,
+      "limits": {
+        "hold_error": [
+          0,
+          0.003
+        ],
+        "hold_drift": [
+          0,
+          1e-06
+        ],
+        "edge_width_error": [
+          0,
+          2e-06
+        ]
+      }
+    },
+    {
+      "path": "tests/01_state_semantics.cir",
+      "suite": "core",
+      "runs": 2,
+      "limits": {
+        "decay_error": [
+          0,
+          0.0001
+        ],
+        "limit_peak_error": [
+          0,
+          1e-06
+        ],
+        "recovery_error": [
+          0,
+          0.001
+        ],
+        "reset_high_error": [
+          0,
+          1e-06
+        ],
+        "reset_after_error": [
+          0,
+          0.0001
+        ]
+      }
+    },
+    {
+      "path": "tests/02_filters.cir",
+      "suite": "core",
+      "runs": 1,
+      "limits": {
+        "low_error": [
+          0,
+          0.0001
+        ],
+        "high_error": [
+          0,
+          0.0001
+        ],
+        "derivative_relative_error": [
+          0,
+          0.001
+        ]
+      }
+    },
+    {
+      "path": "tests/03_hybrid.cir",
+      "suite": "core",
+      "runs": 1,
+      "limits": {
+        "schmitt_initial_error": [
+          0,
+          1e-06
+        ],
+        "schmitt_hold_error": [
+          0,
+          1e-06
+        ],
+        "schmitt_clear_error": [
+          0,
+          1e-06
+        ],
+        "dac_error": [
+          0,
+          1e-06
+        ],
+        "mux_error": [
+          0,
+          1e-06
+        ],
+        "mono_width_error": [
+          0,
+          2e-06
+        ]
+      }
+    },
+    {
+      "path": "examples/APM1_TRI2SQ_A1_F200_v1.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "Y_abs": [
+          0.998,
+          1.002
+        ],
+        "Y01_dut": [
+          0.499,
+          0.501
+        ],
+        "Y_neg": [
+          -1.001,
+          -0.999
+        ],
+        "Y_pos": [
+          0.999,
+          1.001
+        ],
+        "TRI_MIN": [
+          -1.002,
+          -0.998
+        ],
+        "TRI_MAX": [
+          0.998,
+          1.002
+        ]
+      }
+    },
+    {
+      "path": "examples/CANTILEVER BEAM.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "Error_Shear_Tip": [
+          -0.1,
+          0.1
+        ],
+        "Error_Moment_Tip": [
+          -0.1,
+          0.1
+        ],
+        "Tip_Deflection_Meters": [
+          -1.05755556,
+          -1.05355555
+        ]
+      }
+    },
+    {
+      "path": "examples/Helisa_apm_1_.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "pitch_est": [
+          3.5699,
+          3.5701
+        ],
+        "th_end": [
+          31.4158265,
+          31.4160266
+        ],
+        "z_end": [
+          17.8499,
+          17.8501
+        ],
+        "dphi_err": [
+          -1e-05,
+          1e-05
+        ]
+      }
+    },
+    {
+      "path": "examples/integral_equation_d12.cir",
+      "suite": "advanced",
+      "runs": 4,
+      "limits": {
+        "y_stop_error": [
+          0,
+          0.001
+        ],
+        "A_for_boundary": [
+          0.4469658,
+          0.4469661
+        ],
+        "y_at_1": [
+          0.25,
+          0.99
+        ],
+        "x_stop_value": [
+          1.48,
+          1.75
+        ]
+      }
+    },
+    {
+      "path": "examples/APM1_GEE_DEMO.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "x_final": [
+          -2.97873775,
+          -2.97871774
+        ],
+        "y_final": [
+          -2.5623219,
+          -2.56230188
+        ],
+        "speed_error": [
+          0,
+          1e-06
+        ]
+      }
+    },
+    {
+      "path": "examples/Memory.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "Tloop": [
+          1.9e-05,
+          2.1e-05
+        ]
+      }
+    },
+    {
+      "path": "examples/V2.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "v_final": [
+          9.9999,
+          10.0001
+        ],
+        "fD_final": [
+          799.99,
+          800.01
+        ]
+      }
+    },
+    {
+      "path": "examples/APM1_OBOE_DEMO.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "dT_err": [
+          -0.02,
+          0.02
+        ],
+        "rcat_drop": [
+          3.995,
+          4.005
+        ],
+        "rmouse_drop": [
+          3.995,
+          4.005
+        ]
+      }
+    },
+    {
+      "path": "examples/APM1_Y_GERAET_DEMO.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "t_rel_ideal": [
+          39.98,
+          40.02
+        ],
+        "dT_err": [
+          -0.02,
+          0.02
+        ],
+        "dX_err": [
+          -0.05,
+          0.05
+        ]
+      }
+    },
+    {
+      "path": "examples/X_GERAET_DEMO.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "t_Rhine": [
+          9.98,
+          10.02
+        ],
+        "t_Oder": [
+          29.98,
+          30.02
+        ],
+        "t_Elbe": [
+          34.98,
+          35.02
+        ],
+        "t_rel": [
+          39.97,
+          40.07
+        ],
+        "dT_OE": [
+          4.98,
+          5.02
+        ],
+        "dT_ER": [
+          4.97,
+          5.07
+        ]
+      }
+    },
+    {
+      "path": "examples/KNICKEBEIN_APM1.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "Audio_A_peak": [
+          0.01,
+          1
+        ],
+        "Audio_B_peak": [
+          0.01,
+          1
+        ]
+      }
+    },
+    {
+      "path": "examples/RAF_LORENZ_SCENARIO_APM1.cir",
+      "suite": "advanced",
+      "runs": 1,
+      "limits": {
+        "Audio_peak": [
+          0.01,
+          1
+        ],
+        "Audio_rms": [
+          0.01,
+          1
+        ]
+      }
+    }
+  ]
+}

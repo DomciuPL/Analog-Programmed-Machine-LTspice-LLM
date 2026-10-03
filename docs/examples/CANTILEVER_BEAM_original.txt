@@ -1,0 +1,98 @@
+ARCHIWUM KOMENTARZY — commit b7a5d54
+Materiał może zawierać błędy. Nie jest aktualną specyfikacją ani kodem do .include.
+Aktualne równania i instrukcje: ../reference_pl.md, ../advanced_examples_pl.md.
+
+* ====================================================================================
+* APM-1: SYMULACJA UGIĘCIA SKRZYDŁA (CANTILEVER BEAM) Z WOBULATOREM
+* ====================================================================================
+*
+*  OPIS FIZYCZNY:
+*  Symulacja belki wspornikowej (skrzydła) o długości L=10m.
+*  Obciążenie aerodynamiczne q(x) zmienia się parabolicznie od kadłuba do końcówki.
+*  Rozwiązujemy równanie różniczkowe 4. rzędu metodą maszyny analogowej.
+*
+*  METODA "SPACE-TIME MAPPING":
+*  Czas symulacji (t) reprezentuje odległość wzdłuż skrzydła (x).
+*  1 sekunda symulacji = 10 metrów długości skrzydła.
+*  Wobulator generuje napięcie liniowo narastające, które pełni rolę osi X.
+*
+* ====================================================================================
+*  SCHEMAT BLOKOWY MASZYNY ANALOGOWEJ (ASCII ART)
+* ====================================================================================
+*
+*  [GENERATOR OSI X]      [GENERATOR OBCIĄŻENIA]
+*
+*   +---------+  x(t)    +-------+         +-------+  q(x)
+*   | WOBLIN  |--------->| MUL   |-------->| SUM   |--------+
+*   | (Rampa) |          | (x^2) |         | (1-x²)|        |
+*   +---------+          +-------+         +-------+        |
+*                                                           |
+*  [ŁAŃCUCH ROZWIĄZUJĄCY RÓWNANIE RÓŻNICZKOWE]              |
+*                                                           V
+*   (IC=Reakcja R0)      (IC=Moment M0)                     |
+*         |                    |                            |
+*         V                    V                            |
+*   +----------+  T(x)   +----------+  M(x)   +-------+     |
+*   | INT (Cał)|-------->| INT (Cał)|-------->| 1/EI  |-----+
+*   | SIŁA TN. |         | MOMENT   |         | Gain  |
+*   +----------+         +----------+         +-------+
+*                                                 |
+*                                                 V kappa(x)
+*   (IC=0)               (IC=0)               +-------+
+*     |                    |                  | INT   |
+*     V                    V                  | (Cał) |
+*   +----------+  y(x)   +----------+  θ(x)   +-------+
+*   | INT (Cał)|<--------| INT (Cał)|<--------| SLOPE |
+*   | UGIĘCIE  |         | KĄT      |         | (Kąt) |
+*   +----------+         +----------+         +-------+
+*        |
+*        +---> WYJŚCIE SYGNAŁU: V(deflect) = Profil Skrzydła
+*
+* ====================================================================================
+* --- Biblioteki ---
+* --- Definicje Stałych Fizycznych ---
+* --- Konfiguracja Maszyny Analogowej ---
+* Współczynnik K służy do zamiany całkowania po czasie na całkowanie po długości
+* dx = (L/Tsim) * dt
+* --- Warunki Brzegowe (Zagadnienie "Strzału") ---
+* Aby symulować od utwierdzenia (x=0), musimy znać reakcje podpory.
+* Obliczone analitycznie dla rozkładu parabolicznego:
+* =====================================================================
+* SEKCJA 1: GENERACJA ZMIENNEJ NIEZALEŻNEJ I WYMUSZENIA
+* =====================================================================
+* 1.1. WOBULATOR (OŚ X)
+* Generuje sygnał rampy 0V -> 10V. To nasza linijka wzdłuż skrzydła.
+* 1.2. Normalizacja współrzędnej (xi = 0..1)
+* Potrzebna do bezwymiarowego wzoru na obciążenie.
+* 1.3. Generator Funkcji Obciążenia q(x)
+* Realizuje równanie: q = Q_max * (1 - xi^2)
+* Najpierw podnosimy xi do kwadratu:
+* Następnie odejmujemy od jedynki i skalujemy przez Q_max:
+* =====================================================================
+* SEKCJA 2: RDZEŃ OBLICZENIOWY (CAŁKOWANIE)
+* =====================================================================
+* Każdy integrator INTp posiada parametr K={K_space}, co zamienia
+* całkę po czasie (dt) na całkę po drodze (dx).
+* 2.1. KROK 1: Obciążenie q(x) -> Siła Tnąca T(x)
+* Wejście: -q(x) (minus wynika z konwencji znaków w statyce)
+* Warunek początkowy (IC): Reakcja podpory R0_val
+* 2.2. KROK 2: Siła Tnąca T(x) -> Moment Gnący M(x)
+* Warunek początkowy (IC): Moment utwierdzenia M0_val
+* 2.3. Przekształcenie Momentu na Krzywiznę Geometryczną
+* Zgodnie ze wzorem: y'' = M / EI
+* 2.4. KROK 3: Krzywizna -> Kąt ugięcia (Slope)
+* Warunek początkowy: 0 (bo w utwierdzeniu skrzydło jest poziome)
+* 2.5. KROK 4: Kąt -> Ugięcie (Deflection)
+* Warunek początkowy: 0 (bo w utwierdzeniu przesunięcie jest zerowe)
+* =====================================================================
+* SEKCJA 3: WIZUALIZACJA I KONTROLA BŁĘDÓW
+* =====================================================================
+* Wizualizacja (Obrót znaku dla intuicyjnego wykresu "skrzydło w górę")
+* Masa obliczeniowa (niezbędna dla biblioteki APM-1)
+* --- PARAMETRY SYMULACJI LTSpice ---
+* .tran: Analiza czasowa od 0 do 1s.
+* uic: "Use Initial Conditions" - kluczowe, aby integrator zaczął od R0/M0.
+* --- POMIARY AUTOMATYCZNE (Wyniki w Error Log) ---
+* Sprawdzamy poprawność matematyczną modelu.
+* Na swobodnym końcu skrzydła (czas = Tsim) siła i moment muszą być ZERO.
+* Pobieramy ostateczne ugięcie końcówki (w metrach)
