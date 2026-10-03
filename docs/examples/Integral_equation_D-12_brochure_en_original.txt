@@ -1,0 +1,90 @@
+===================================================================================
+==           FINAL DOCUMENTED VERSION - HYBRID ARCHITECTURE                    ==
+===================================================================================
+
+File:     Integral_equation_D-12_brochure.cir
+Purpose:  To reconstruct the results of a historical simulation from the D-12
+brochure, which demonstrates the solution of an integral equation on an
+analog computer.
+
+===================================================================================
+
+PROBLEM DESCRIPTION
+
+This problem originates from the D-12 technical brochure. The goal is to solve the
+following integral equation, and specifically to find the value of the parameter 'A'
+for which the solution satisfies the boundary condition: y(x=1) = 1.
+
+x
+/
+y(x) = 0.25 +       |    A * y(t) * [1 + 0.14*y(t)] * [1 + 0.02752*y(t)]
+|   -------------------------------------------------- dt
+/                 [1 - y(t)] * [1 - A*t]
+0
+
+with the initial condition y(0) = 0.25. The brochure states that the target value is
+A = 0.2563. The goal of this simulation is to reproduce the historical result,
+including showing the system's behavior for different values of parameter A.
+
+===================================================================================
+
+SOLUTION ARCHITECTURE AND BLOCK DIAGRAM
+
+A hybrid architecture was used, combining the "best of both worlds":
+1. MATHEMATICAL CORRECTNESS: The calculation of the derivative dy/dx is performed
+step-by-step using simple blocks (MUL, SUM, GAIN) from the analog computer
+library. This ensures that the complex equation is evaluated correctly.
+2. NUMERICAL STABILITY: The integration of the result is implemented using the
+most stable method in SPICE: charging a capacitor (C) with a current
+source (G).
+
++-------------------------------------------------+
+|      "ANALOG COMPUTER" COMPUTATION BLOCK        |
+|  Calculates dy/dx using simple blocks (MUL, SUM)| ----> V(dydx)
+|  Inputs: V(y), V(x), A                           |
++-------------------------------------------------+
+^                                                 |
+|       (Feedback Loop)                           |
+|                                                 |
++--|-------------------------------------------------+
+|  |
+|  |       +--------------------------------------------+
+|  |       |             SPICE INTEGRATOR CORE          |
+|  +------>| G_integrator (Current Source I = V(dydx))  |
+| V(y)     +--------------------------------------------+
+|                  | (current)
+|                  v
+|          +------------------+
+|          |  C_integrator    |------> V(y) (RESULT)
+|          |  (1F Capacitor)  |
+|          +------------------+
+
+===================================================================================
+
+WHAT COULD SUCH CALCULATIONS BE USED FOR?
+
+Equations with this structure, containing a (1-y) term in the denominator,
+often model "explosive" or "runaway" phenomena that accelerate dramatically
+as they approach a critical point. Potential applications include:
+
+1. CHEMICAL REACTIONS: Modeling autocatalytic reactions where the product of a
+reaction is also its catalyst. The reaction rate grows exponentially until
+the reactants are depleted (symbolized by the (1-y) term).
+
+2. PHYSICS AND ENGINEERING: Analysis of thermal runaway in chemical reactors or
+batteries. 'y' could represent temperature, which rises in a positive
+feedback loop until a critical point is reached, leading to an explosion
+or ignition.
+
+3. POPULATION DYNAMICS: Modeling population growth under specific conditions where
+approaching the environmental carrying capacity causes rapid, unstable changes
+instead of a smooth saturation (as in the classic logistic model).
+
+4. ECONOMICS: Modeling speculative bubbles in financial markets, where the rising
+price of an asset drives further buying, leading to a sharp ascent (the
+asymptote) that ends in a crash.
+
+This problem is therefore an excellent example of the stability analysis of a
+complex dynamical system.
+
+===================================================================================

@@ -1,0 +1,112 @@
+ARCHIWUM KOMENTARZY — commit b7a5d54
+Materiał może zawierać błędy. Nie jest aktualną specyfikacją ani kodem do .include.
+Aktualne równania i instrukcje: ../reference_pl.md, ../advanced_examples_pl.md.
+
+* =====================================================================
+* APM1_Y_GERAET_DEMO.cir — Y-Gerät (Wotan II) single-beam range control
+* APM-1 analog realization in LTspice
+* =====================================================================
+*
+* WPROWADZENIE
+* ---------------------------------------------------------------------
+* Ta netlista symuluje działanie niemieckiego systemu nawigacji Y-Gerät.
+* W przeciwieństwie do X-Gerät, który używał wielu wiązek poprzecznych,
+* Y-Gerät opierał się na jednej wiązce prowadzącej i precyzyjnym pomiarze
+* odległości. Stacja naziemna wysyłała sygnał, który był odsyłany przez
+* transponder na pokładzie samolotu. Na podstawie czasu powrotu sygnału
+* obliczano odległość. Gdy zmierzona odległość zrównała się z odległością
+* celu, stacja wysyłała sygnał do zrzutu bomb.
+*
+* CEL SYMULACJI: ANALIZA ZAKŁÓCEŃ (JAMMINGU)
+* ---------------------------------------------------------------------
+* Głównym celem tego modelu jest demonstracja skuteczności brytyjskich
+* przeciwdziałań elektronicznych. Brytyjczycy przechwytywali sygnał
+* z transpondera samolotu i retransmitowali go z niewielkim opóźnieniem.
+* To "oszukiwało" niemiecką stację naziemną, która "widziała" samolot
+* dalej, niż był w rzeczywistości. W efekcie sygnał zrzutu był wysyłany
+* za wcześnie, a bomby spadały przed celem.
+*
+* MODEL SYMULACYJNY
+* ---------------------------------------------------------------------
+* - Zmienna x(t) [V] opisuje RZECZYWISTĄ odległość samolotu od nadajnika
+*   naziemnego (1 V = 10 km).
+* - Cel (L_T) znajduje się w odległości 4 V = 40 km od nadajnika.
+* - Samolot startuje przy nadajniku (x(0)=0) i leci w stronę celu.
+* - Parametr x_jam [V] symuluje błąd pomiaru wprowadzony przez jamming.
+*   x_jam > 0 oznacza, że ZMIERZONA odległość jest większa od rzeczywistej.
+* - Symulacja porównuje dwa tory:
+*   1. Tor "idealny": zrzut następuje, gdy x(t) = L_T (bez błędów).
+*   2. Tor Y-Gerät: zrzut następuje, gdy x_meas(t) = x(t) + x_jam = L_T.
+* =====================================================================
+* Skala geometryczna wiązki Y-Gerät
+* Parametr błędu „fazowego” (model jammingu Alexandra Palace)
+* x_jam = 0: brak zakłócenia, Y-Gerät poprawny
+* x_jam > 0: pozorna odległość większa niż rzeczywista, zrzut za wcześnie
+*.step param x_jam list 0 0.5 1.0   ; przykład skanowania zakłócenia
+* Parametry analizy czasowej
+* ---------------------------------------------------------------------
+* Blok 1: Czas maszynowy
+* ---------------------------------------------------------------------
+* Generuje sygnał czasu 't' dla całej symulacji.
+* ---------------------------------------------------------------------
+* Blok 2: Integrator toru lotu — pozycja x(t) względem nadajnika
+* ---------------------------------------------------------------------
+* Ten blok symuluje ruch samolotu. Integrator XINT_X oblicza
+* rzeczywistą pozycję x(t) poprzez całkowanie stałej prędkości 'v'.
+* Samolot startuje w x(0)=0 i oddala się od nadajnika.
+*
+* Równanie: dx/dt = v, x(0) = x0
+* Pozycja w kilometrach (x_km = 10 * x)
+* ---------------------------------------------------------------------
+* Blok 3: Tor "idealny" — zrzut przy x(t) = L_T
+* ---------------------------------------------------------------------
+* Ten blok reprezentuje "prawdę obiektywną" - moment zrzutu w idealnych
+* warunkach, bez żadnych błędów pomiarowych.
+* Błąd 'e_ideal' jest różnicą między pozycją celu a rzeczywistą pozycją
+* samolotu. Impuls 'pulse_ideal' jest generowany, gdy błąd ten spada do zera.
+*
+* e_ideal = L_T  x(t) (dodatnie: przed celem, ujemne: po minięciu celu)
+* Komparator: flag_ideal = 1 dopóki e_ideal > 0
+* Detektor zbocza opadającego flag_ideal  impuls zrzutu "idealnego"
+* ---------------------------------------------------------------------
+* Blok 4: Tor Y-Gerät — pomiar odległości na ziemi z możliwym błędem
+* ---------------------------------------------------------------------
+* Ten blok modeluje działanie rzeczywistego systemu Y-Gerät, który jest
+* podatny na zakłócenia.
+* Zmierzona pozycja 'x_meas' to suma rzeczywistej pozycji 'x' i błędu 'x_jam'.
+* System naziemny oblicza błąd 'e_Y' na podstawie tej zafałszowanej pozycji.
+* Impuls zrzutu 'pulse_Y' jest generowany, gdy 'e_Y' spada do zera,
+* czyli gdy ZMIERZONA (a nie rzeczywista) pozycja osiąga pozycję celu.
+*
+* x_meas(t) = x(t) + x_jam
+* e_Y = L_T  x_meas(t): błąd odległości wg Y-Gerät (stan na ziemi)
+* Komparator: flag_Y = 1 dopóki wg Y-Gerät samolot jest przed celem
+* Detektor zbocza opadającego flag_Y  impuls zrzutu wg Y-Gerät
+* ---------------------------------------------------------------------
+* Analiza czasowa
+* ---------------------------------------------------------------------
+* ---------------------------------------------------------------------
+* Pomiary i interpretacja wyników
+* ---------------------------------------------------------------------
+* Pomiary te kwantyfikują wpływ zakłóceń na precyzję bombardowania.
+* - t_rel_ideal: Czas, w którym samolot FAKTYCZNIE osiąga cel.
+* - t_rel_Y: Czas, w którym system Y-Gerät MYŚLI, że samolot osiągnął cel.
+* - dT_err: Różnica tych czasów. Ujemna wartość oznacza zrzut przedwczesny.
+* - dX_err: Błąd trafienia w kilometrach. Ujemna wartość oznacza, że bomby
+*           spadły PRZED celem. Jest to bezpośredni, fizyczny skutek jammingu.
+*
+*=== RESULTS_BEGIN ===
+* Czas zrzutu w torze idealnym (bez błędu pomiarowego)
+* Czas zrzutu w torze Y-Gerät (z pomiarem x_meas)
+* Różnica czasów zrzutu
+* Różnica odległości (w kilometrach) w chwili zrzutu Y-Gerät
+* dX_err [km] = v [V/s] * dT_err [s] * (10 km / 1 V)
+* Zalecane przebiegi:
+*   V(x_km)              — rzeczywista odległość od nadajnika [km].
+*   V(e_ideal), V(e_Y)   — błędy odległości: idealny i Y-Gerät.
+*   V(pulse_ideal),
+*   V(pulse_Y)           — impulsy zrzutu: idealny i wg Y-Gerät.
+*   Przy x_jam=0:        t_rel_Y  t_rel_ideal  40 s, dX_err  0 km.
+*   Przy x_jam>0:        zrzut następuje za wcześnie, dX_err < 0 km
+*                        (bomby spadają przed celem).
+*=== RESULTS_END ===

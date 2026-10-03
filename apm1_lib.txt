@@ -1,5 +1,6 @@
 * =====================================================================
-* APM-1 Analog Programmed Machine
+* APM-1 Analog Programmed Machine -- 2.0.0 candidate
+* State equations and migration notes: docs/reference_pl.md, docs/migration_pl.md
 * Wszystkie subukłady używają jawnego pinu masy obliczeniowej "GDN" (do węzła 0)
 * Domyślna skala napięcia maszynowego: VL=10
 * =====================================================================
@@ -92,46 +93,50 @@ R_MULPINV out GDN 1G
 
 .subckt INT out u GDN PARAMS: IC=0 SIGN=-1 leak=0
 * LLM_DESC_START
-* Function: Integrator. out = IC + ∫ SIGN*u dt
+* Function: Buffered integrator. dx/dt=SIGN*u-leak*x; x(0)=IC.
 * Pins: out, u, GDN
 * Params: IC, SIGN, leak
 * LLM_DESC_END
-B_INT  out GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
-G_INT  out GDN value = {{leak}*V(out,GDN)}
+C_INT_STATE x GDN 1 IC={IC}
+.ic V(x)={IC}
+B_INT_DRIVE GDN x I = {SIGN*V(u,GDN)-leak*V(x,GDN)}
+B_INT out GDN V = {V(x,GDN)}
 R_INT  out GDN 1G
 .ends INT
 
 .subckt INTp out u GDN PARAMS: IC=0 SIGN=-1 K=1 leak=0
 * LLM_DESC_START
-* Function: Integrator with gain. out = IC + ∫ SIGN*K*u dt
+* Function: Buffered integrator. dx/dt=SIGN*K*u-leak*x; x(0)=IC.
 * Pins: out, u, GDN
 * Params: IC, SIGN, K, leak
 * LLM_DESC_END
-B_INTP out GDN V = sdt( {SIGN}*{K}*V(u,GDN), {IC} )
-G_INTP out GDN value = {{leak}*V(out,GDN)}
+B_INTP_SCALE drive GDN V = {K*V(u,GDN)}
+X_INTP_CORE out drive GDN INT IC={IC} SIGN={SIGN} leak={leak}
 R_INTP out GDN 1G
 .ends INTp
 
 .subckt INTpinv out u GDN PARAMS: IC=0 K=1 leak=0
 * LLM_DESC_START
-* Function: Non-inverting integrator. out = IC + ∫ K*u dt
+* Function: Non-inverting integrator. dx/dt=K*u-leak*x; x(0)=IC.
 * Pins: out, u, GDN
 * Params: IC, K, leak
 * LLM_DESC_END
-B_INTPINV out GDN V = sdt( {K}*V(u,GDN), {IC} )
-G_INTPINV out GDN value = {{leak}*V(out,GDN)}
+X_INTPINV_CORE out u GDN INTp IC={IC} SIGN=1 K={K} leak={leak}
 R_INTPINV out GDN 1G
 .ends INTpinv
 
-.subckt INTV out u GDN PARAMS: IC=0 SIGN=-1 L=-10 H=10 leak=0
+.subckt INTV out u GDN PARAMS: IC=0 SIGN=-1 L=-10 H=10 leak=0 Taw=1m
 * LLM_DESC_START
-* Function: Integrator with clamp. out = limit(IC+∫ SIGN*u dt, L, H)
+* Function: Limited integrator with back-calculation anti-windup.
+* Equation: y=limit(x,L,H); dx/dt=SIGN*u-leak*x+(y-x)/Taw.
+* State: x(0)=limit(IC,L,H). State may exceed bounds by finite tracking error.
 * Pins: out, u, GDN
-* Params: IC, SIGN, L, H, leak
+* Params: IC, SIGN, L, H, leak [1/s], Taw [s; positive]
 * LLM_DESC_END
-B_INTV_RAW x   GDN V = sdt( {SIGN}*V(u,GDN), {IC} )
+C_INTV_STATE x GDN 1 IC={limit(IC,L,H)}
+.ic V(x)={limit(IC,L,H)}
+B_INTV_DRIVE GDN x I = {SIGN*V(u,GDN)-leak*V(x,GDN)+(limit(V(x,GDN),L,H)-V(x,GDN))/Taw}
 B_INTV_CL  out GDN V = limit( V(x,GDN), {L}, {H} )
-G_INTV     out GDN value = {{leak}*V(out,GDN)}
 R_INTV     out GDN 1G
 .ends INTV
 
@@ -177,14 +182,18 @@ B_GAIN out GDN V = {{K}*V(u,GDN)}
 R_GAIN out GDN 1G
 .ends GAIN
 
-.subckt DIF out u GDN PARAMS: K=1 leak=0
+.subckt DIF out u GDN PARAMS: K=1 leak=0 tau=0
 * LLM_DESC_START
-* Function: Differentiator. out=K*du/dt
+* Function: tau=0: ideal derivative; tau>0: K*s/(tau*s+1).
 * Pins: out, u, GDN
-* Params: K, leak
+* Params: K, tau [s]. leak is a deprecated compatibility parameter; use 0.
 * LLM_DESC_END
-B_DIF  out GDN V = {{K}*ddt(V(u,GDN))}
-G_DIF  out GDN value = {{leak}*V(out,GDN)}
+.if (tau>0)
+X_DIF_LP low u GDN LP1 tau={tau} K=1
+B_DIF out GDN V = {K*(V(u,GDN)-V(low,GDN))/tau}
+.else
+B_DIF_IDEAL out GDN V = {K*ddt(V(u,GDN))}
+.endif
 R_DIF  out GDN 1G
 .ends DIF
 
@@ -228,13 +237,16 @@ B_SGN  out GDN V = sgn1(V(u,GDN))
 R_SGN  out GDN 1G
 .ends SGN
 
-.subckt SCHMITT y u GDN PARAMS: CEN=0 HYS=0.2
+.subckt SCHMITT y u GDN PARAMS: CEN=0 HYS=0.2 IC=0 Tmem=10n
 * LLM_DESC_START
-* Function: Schmitt trigger with hysteresis.
+* Function: Schmitt trigger with explicit capacitor memory, 0/1 output.
 * Pins: y, u, GDN
-* Params: CEN, HYS
+* Params: CEN, HYS [positive], IC [0 or 1], Tmem [s; positive]
 * LLM_DESC_END
-B_SCHMITT y GDN V = if( V(u,GDN)>{CEN+HYS/2}, 1, if( V(u,GDN)<{CEN-HYS/2}, 0, V(y,GDN) ) )
+C_SCHMITT_STATE state GDN 1 IC={IC}
+.ic V(state)={IC}
+B_SCHMITT_DRIVE GDN state I = {if(V(u,GDN)>CEN+HYS/2,(1-V(state,GDN))/Tmem,if(V(u,GDN)<CEN-HYS/2,-V(state,GDN)/Tmem,0))}
+B_SCHMITT y GDN V = {if(V(state,GDN)>0.5,1,0)}
 R_SCHMITT y GDN 1G
 .ends SCHMITT
 
@@ -254,7 +266,11 @@ R_DELAY out GDN 1G
 * Pins: out, u, GDN
 * Params: tau, K
 * LLM_DESC_END
-B_LP1 out GDN V = sdt( ( {K}*V(u,GDN) - V(out,GDN) )/{tau}, 0 )
+B_LP1_INPUT drive GDN V = {K*V(u,GDN)}
+R_LP1_TAU drive x {tau}
+C_LP1_STATE x GDN 1 IC=0
+.ic V(x)=0
+B_LP1 out GDN V = {V(x,GDN)}
 R_LP1 out GDN 1G
 .ends LP1
 
@@ -264,20 +280,21 @@ R_LP1 out GDN 1G
 * Pins: out, u, GDN
 * Params: tau, K
 * LLM_DESC_END
-B_HP1_INT x   GDN V = sdt( ( {K}*V(u,GDN) - V(x,GDN) )/{tau}, 0 )
+X_HP1_LP x u GDN LP1 tau={tau} K={K}
 B_HP1_OUT out GDN V = {K}*V(u,GDN) - V(x,GDN)
 R_HP1     out GDN 1G
 .ends HP1
 
-.subckt S_H out u i GDN PARAMS: Ron=1 Roff=1G Ch=100n
+.subckt S_H out u i GDN PARAMS: Ron=1 Roff=1G Ch=100n IC=0
 * LLM_DESC_START
-* Function: Sample&Hold. out=u when i>0.5, else hold
+* Function: Track/hold. Track time constant Ron*Ch; hold leakage via Roff.
 * Pins: out, u, i, GDN
-* Params: Ron, Roff, Ch
+* Params: Ron, Roff, Ch, IC
 * LLM_DESC_END
 S_S_H u n i GDN SW
 .model SW SW(Ron={Ron} Roff={Roff} Vt=0.5 Vh=0)
-C_S_H n GDN {Ch}
+C_S_H n GDN {Ch} IC={IC}
+.ic V(n)={IC}
 E_S_H out GDN value = { V(n,GDN) }
 R_S_H out GDN 1G
 .ends S_H
@@ -286,11 +303,17 @@ R_S_H out GDN 1G
 
 .subckt CLK out GDN PARAMS: f=1k duty=0.5 vhi=1 vlo=0 tr=1u tf=1u
 * LLM_DESC_START
-* Function: Clock generator (PULSE). period=1/f, Ton=duty/f
+* Function: Clock. period=1/f; duty measured between half-height crossings.
 * Pins: out, GDN
 * Params: f, duty, vhi, vlo, tr, tf
 * LLM_DESC_END
-V_CLK out GDN PULSE({vlo} {vhi} 0 {tr} {tf} {duty/f} {1/f})
+.if (duty<=0)
+V_CLK_LO out GDN {vlo}
+.elseif (duty>=1)
+V_CLK_HI out GDN {vhi}
+.else
+V_CLK out GDN PULSE({vlo} {vhi} 0 {tr} {tf} {duty/f-(tr+tf)/2} {1/f})
+.endif
 .ends CLK
 
 .subckt DAC8 y b7 b6 b5 b4 b3 b2 b1 b0 GDN PARAMS: VL=10
@@ -313,23 +336,23 @@ B_MUX4 y GDN V = if( V(s1,GDN)>0.5, if(V(s0,GDN)>0.5, V(d,GDN), V(c,GDN)), if(V(
 R_MUX4 y GDN 1G
 .ends MUX4
 
-.subckt EDGE_R y u GDN PARAMS: Td=1u
+.subckt EDGE_R y u GDN PARAMS: Td=1u th=0.5
 * LLM_DESC_START
-* Function: Rising-edge detector. pulse width≈Td
+* Function: Rising threshold crossing detector. Width Td for isolated edges.
 * Pins: y, u, GDN
-* Params: Td
+* Params: Td [positive], th
 * LLM_DESC_END
-B_EDGE_R y GDN V = if( V(u,GDN) > delay(V(u,GDN),{Td}), 1, 0 )
+B_EDGE_R y GDN V = {if(V(u,GDN)>th,if(delay(V(u,GDN),Td)<=th,1,0),0)}
 R_EDGE_R y GDN 1G
 .ends EDGE_R
 
-.subckt EDGE_F y u GDN PARAMS: Td=1u
+.subckt EDGE_F y u GDN PARAMS: Td=1u th=0.5
 * LLM_DESC_START
-* Function: Falling-edge detector. pulse width≈Td
+* Function: Falling threshold crossing detector. Width Td for isolated edges.
 * Pins: y, u, GDN
-* Params: Td
+* Params: Td [positive], th
 * LLM_DESC_END
-B_EDGE_F y GDN V = if( V(u,GDN) < delay(V(u,GDN),{Td}), 1, 0 )
+B_EDGE_F y GDN V = {if(V(u,GDN)<=th,if(delay(V(u,GDN),Td)>th,1,0),0)}
 R_EDGE_F y GDN 1G
 .ends EDGE_F
 
@@ -344,26 +367,34 @@ B_PWM     y GDN V = if( V(u,GDN)/{VL} > (V(t,GDN)+1)/2, 1, 0 )
 R_PWM     y GDN 1G
 .ends PWM
 
-.subckt MONO y trig GDN PARAMS: Td=1u Tw=1m
+.subckt MONO y trig GDN PARAMS: Td=1u Tw=1m Tmem=10n
 * LLM_DESC_START
-* Function: One-shot. Rising edge on trig → pulse Tw
+* Function: One-shot with explicit memory; separated triggers yield width Tw.
+* Require Tw>Td>=20*Tmem and trigger spacing > Tw+Td. Reset has priority.
 * Pins: y, trig, GDN
-* Params: Td, Tw
+* Params: Td, Tw, Tmem [positive; seconds]
 * LLM_DESC_END
-B_MONO_SET s GDN V = if( V(trig,GDN) > delay(V(trig,GDN),{Td}), 1, 0 )
+X_MONO_EDGE s trig GDN EDGE_R Td={Td} th=0.5
 B_MONO_RST r GDN V = delay(V(s,GDN),{Tw})
-B_MONO_LCH y GDN V = if( V(r,GDN)>0.5, 0, if(V(s,GDN)>0.5, 1, V(y,GDN)) )
+C_MONO_STATE state GDN 1 IC=0
+.ic V(state)=0
+B_MONO_DRIVE GDN state I = {if(V(r,GDN)>0.5,-V(state,GDN)/Tmem,if(V(s,GDN)>0.5,(1-V(state,GDN))/Tmem,0))}
+B_MONO_LCH y GDN V = {if(V(state,GDN)>0.5,1,0)}
 R_MONO     y GDN 1G
 .ends MONO
 
-.subckt RSTINT y u rst GDN PARAMS: IC=0 SIGN=-1 leak=0
+.subckt RSTINT y u rst GDN PARAMS: IC=0 SIGN=-1 leak=0 Tr=1u
 * LLM_DESC_START
-* Function: Resettable integrator. rst>0.5 → y=IC, else integrate
+* Function: Resettable integrator with capacitor state.
+* Equation: rst>0.5: dx/dt=(IC-x)/Tr; else dx/dt=SIGN*u-leak*x.
+* Reset pulse >=20*Tr settles state to IC; this is a finite-time reset.
 * Pins: y, u, rst, GDN
-* Params: IC, SIGN, leak
+* Params: IC, SIGN, leak [1/s], Tr [s; positive]
 * LLM_DESC_END
-B_RSTINT y GDN V = if( V(rst,GDN)>0.5, {IC}, sdt( {SIGN}*V(u,GDN), {IC} ) )
-G_RSTINT y GDN value = {{leak}*V(y,GDN)}
+C_RSTINT_STATE x GDN 1 IC={IC}
+.ic V(x)={IC}
+B_RSTINT_DRIVE GDN x I = {if(V(rst,GDN)>0.5,(IC-V(x,GDN))/Tr,SIGN*V(u,GDN)-leak*V(x,GDN))}
+B_RSTINT y GDN V = {V(x,GDN)}
 R_RSTINT y GDN 1G
 .ends RSTINT
 

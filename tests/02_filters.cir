@@ -1,0 +1,19 @@
+* APM-1: RC-based filters and band-limited differentiator
+.include "../apm1_lib.txt"
+.param VL=10
+Vu u 0 PWL(0 0 1m 0 1.000001m 1 20m 1)
+XLP low u 0 LP1 tau=1m K=1
+XHP high u 0 HP1 tau=1m K=1
+XD derivative u 0 DIF K=1 tau=1m leak=0
+.options method=gear reltol=1e-7 abstol=1e-10 vntol=1e-9 plotwinsize=0
+.tran 0 10m 0 1u
+.save V(u) V(low) V(high) V(derivative)
+*=== RESULTS_BEGIN ===
+.meas tran low_tau FIND V(low) AT=2m
+.meas tran high_tau FIND V(high) AT=2m
+.meas tran derivative_tau FIND V(derivative) AT=2m
+.meas tran low_error PARAM abs(low_tau-(1-exp(-1)))
+.meas tran high_error PARAM abs(high_tau-exp(-1))
+.meas tran derivative_relative_error PARAM abs(derivative_tau/(1000*exp(-1))-1)
+*=== RESULTS_END ===
+.end

@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+build/
+*.raw
+*.log
+*.net
+*.op.raw
+*.wav

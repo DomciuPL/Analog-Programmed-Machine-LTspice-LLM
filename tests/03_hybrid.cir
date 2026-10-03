@@ -1,0 +1,28 @@
+* APM-1: explicit Schmitt/one-shot memory and 0/1 DAC inputs
+.include "../apm1_lib.txt"
+.param VL=10
+Vone one 0 1
+Vu u 0 PWL(0 0 1m 0 1.1m 0.2 2m 0.2 2.1m 0 3m 0 3.1m -0.2 4m -0.2)
+XSCH h u 0 SCHMITT CEN=0 HYS=0.2 IC=0 Tmem=1u
+Vtrig trig 0 PULSE(0 1 1m 1u 1u 100u 10m)
+XMON mono trig 0 MONO Td=20u Tw=500u Tmem=100n
+XDAC dac one 0 0 0 0 0 0 0 0 DAC8 VL={VL}
+XMUX mux one 0 0 0 CMPda
+.options method=gear reltol=1e-7 abstol=1e-10 vntol=1e-9 plotwinsize=0
+.tran 0 4m 0 1u
+.save V(u) V(h) V(mono) V(dac) V(mux)
+*=== RESULTS_BEGIN ===
+.meas tran schmitt_initial FIND V(h) AT=500u
+.meas tran schmitt_hold FIND V(h) AT=2.5m
+.meas tran schmitt_clear FIND V(h) AT=3.5m
+.meas tran schmitt_initial_error PARAM abs(schmitt_initial)
+.meas tran schmitt_hold_error PARAM abs(schmitt_hold-1)
+.meas tran schmitt_clear_error PARAM abs(schmitt_clear)
+.meas tran mono_width TRIG V(mono) VAL=0.5 RISE=1 TARG V(mono) VAL=0.5 FALL=1
+.meas tran mono_width_error PARAM abs(mono_width-500u)
+.meas tran dac_value FIND V(dac) AT=4m
+.meas tran dac_error PARAM abs(dac_value-10*128/255)
+.meas tran mux_value FIND V(mux) AT=4m
+.meas tran mux_error PARAM abs(mux_value)
+*=== RESULTS_END ===
+.end

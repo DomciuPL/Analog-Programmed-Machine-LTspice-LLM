@@ -1,0 +1,19 @@
+* APM-1: track/hold, logic levels and threshold-based edge detection
+.include "../apm1_lib.txt"
+.param VL=10
+B_RAMP u 0 V={1000*time}
+XCLK clk 0 CLK f=1k duty=0.5 tr=2u tf=2u
+XEDGE edge clk 0 EDGE_R Td=20u
+XSH held u clk 0 S_H Ron=1 Roff=1T Ch=1u IC=0
+.options method=gear reltol=1e-6 abstol=1e-9 vntol=1e-9 plotwinsize=0
+.tran 0 4m 0 1u
+.save V(u) V(clk) V(edge) V(held)
+*=== RESULTS_BEGIN ===
+.meas tran hold_early FIND V(held) AT=750u
+.meas tran hold_late FIND V(held) AT=900u
+.meas tran hold_error PARAM abs(hold_early-0.5)
+.meas tran hold_drift PARAM abs(hold_late-hold_early)
+.meas tran edge_width TRIG V(edge) VAL=0.5 RISE=2 TARG V(edge) VAL=0.5 FALL=2
+.meas tran edge_width_error PARAM abs(edge_width-20u)
+*=== RESULTS_END ===
+.end

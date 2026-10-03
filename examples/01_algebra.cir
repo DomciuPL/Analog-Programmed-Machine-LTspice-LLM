@@ -1,0 +1,27 @@
+* APM-1: algebra and explicit scale forwarding
+.include "../apm1_lib.txt"
+.param VL=10
+.step param VL list 5 10 20
+Va a 0 2
+Vb b 0 3
+XGAIN gain a 0 GAIN K=2
+XSUM sum a b 0 SUM Ku=1 Kd=1
+XMUL normalized a b 0 MUL VL={VL}
+XPRODUCT product normalized 0 GAIN K={VL}
+XDPT pot a b 0 DPT VL={VL}
+.options method=gear reltol=1e-6 abstol=1e-9 vntol=1e-9 plotwinsize=0
+.tran 0 1m 0 10u
+.save V(gain) V(sum) V(normalized) V(product) V(pot)
+*=== RESULTS_BEGIN ===
+.meas tran gain_value FIND V(gain) AT=1m
+.meas tran sum_value FIND V(sum) AT=1m
+.meas tran normalized_value FIND V(normalized) AT=1m
+.meas tran product_value FIND V(product) AT=1m
+.meas tran pot_value FIND V(pot) AT=1m
+.meas tran gain_error PARAM abs(gain_value-4)
+.meas tran sum_error PARAM abs(sum_value-5)
+.meas tran normalization_error PARAM abs(normalized_value-6/VL)
+.meas tran product_error PARAM abs(product_value-6)
+.meas tran pot_error PARAM abs(pot_value-6/VL)
+*=== RESULTS_END ===
+.end
